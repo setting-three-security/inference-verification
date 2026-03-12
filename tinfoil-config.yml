@@ -16,6 +16,9 @@ shim:
   upstream-port: 8080
   paths:
     - /verify
+    - /verify-stream
+    - /query-and-verify
+    - /query-and-verify-stream
     - /health
     - /config
     - /ui

@@ -39,4 +39,4 @@ RUN pip3 install --no-cache-dir --no-deps .
 
 EXPOSE 8080
 
-CMD ["python3", "api_server.py"]
+CMD ["python3", "webapp/api_server.py"]
