@@ -60,10 +60,26 @@ class VerifyRequest(BaseModel):
     config: Optional[dict] = Field(default=None, description="Override generation/verification config")
 
 
-class QueryAndVerifyRequest(BaseModel):
-    """Request body for /query-and-verify endpoint."""
+class QueryRequest(BaseModel):
+    """Request body for /query endpoint (OpenRouter only)."""
     prompt: str = Field(description="User prompt to send to OpenRouter")
     max_tokens: int = Field(default=100, description="Max tokens to generate")
+    temperature: float = Field(default=1.0)
+    top_k: int = Field(default=50)
+    top_p: float = Field(default=0.95)
+    seed: int = Field(default=42)
+
+
+class QueryResponse(BaseModel):
+    """Response from /query endpoint."""
+    response_text: str
+    prompt: str
+
+
+class VerifyTextRequest(BaseModel):
+    """Request body for /verify-text endpoint — verify already-queried text."""
+    prompt: str = Field(description="Original prompt (needed for tokenization context)")
+    response_text: str = Field(description="LLM response text to verify")
     temperature: float = Field(default=1.0)
     top_k: int = Field(default=50)
     top_p: float = Field(default=0.95)
@@ -403,10 +419,10 @@ def verify_stream(req: VerifyRequest):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-@app.post("/query-and-verify", response_model=VerifyResponse)
-def query_and_verify(req: QueryAndVerifyRequest):
-    """Query OpenRouter then verify the response tokens locally."""
-    if FAUX_MODE:
+@app.post("/query", response_model=QueryResponse)
+def query(req: QueryRequest):
+    """Query OpenRouter and return the response text (no verification)."""
+    try:
         response_text = query_openrouter(
             req.prompt,
             max_tokens=req.max_tokens,
@@ -415,38 +431,36 @@ def query_and_verify(req: QueryAndVerifyRequest):
             top_p=req.top_p,
             seed=req.seed,
         )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"OpenRouter query failed: {e}")
+    if not response_text:
+        raise HTTPException(status_code=400, detail="OpenRouter returned empty response")
+    return QueryResponse(response_text=response_text, prompt=req.prompt)
+
+
+@app.post("/verify-text", response_model=VerifyResponse)
+def verify_text(req: VerifyTextRequest):
+    """Verify already-queried text against the local model."""
+    if FAUX_MODE:
         return _faux_response(
-            response_text,
+            req.response_text,
             seed=req.seed,
             gls_threshold=req.gls_threshold,
             logit_rank_threshold=req.logit_rank_threshold,
         )
 
-    # Step 1: Query OpenRouter
-    response_text = query_openrouter(
-        req.prompt,
-        max_tokens=req.max_tokens,
-        temperature=req.temperature,
-        top_k=req.top_k,
-        top_p=req.top_p,
-        seed=req.seed,
-    )
-
-    # Step 2: Tokenize prompt and response
     tokenizer = AutoTokenizer.from_pretrained(DEFAULT_MODEL)
     prompt_token_ids = tokenizer.encode(req.prompt, add_special_tokens=True)
-    response_token_ids = tokenizer.encode(response_text, add_special_tokens=False)
+    response_token_ids = tokenizer.encode(req.response_text, add_special_tokens=False)
 
     if not response_token_ids:
-        raise HTTPException(status_code=400, detail="OpenRouter returned empty response")
+        raise HTTPException(status_code=400, detail="Response text tokenized to empty sequence")
 
-    # Step 3: Create mock output for verify_outputs
     mock_output = MockRequestOutput(
         prompt_token_ids=prompt_token_ids,
         outputs=[MockOutput(token_ids=response_token_ids)],
     )
 
-    # Step 4: Verify
     ver_cfg = VerificationConfig(
         model_name=DEFAULT_MODEL,
         temperature=req.temperature,
@@ -465,33 +479,17 @@ def query_and_verify(req: QueryAndVerifyRequest):
     )
 
 
-@app.post("/query-and-verify-stream")
-def query_and_verify_stream(req: QueryAndVerifyRequest):
-    """SSE streaming version of /query-and-verify with progress stages."""
+@app.post("/verify-text-stream")
+def verify_text_stream(req: VerifyTextRequest):
+    """SSE streaming version of /verify-text with progress stages."""
 
     def generate_faux():
-        yield _sse_event({"stage": "querying_openrouter", "detail": "Querying OpenRouter..."})
-        try:
-            response_text = query_openrouter(
-                req.prompt,
-                max_tokens=req.max_tokens,
-                temperature=req.temperature,
-                top_k=req.top_k,
-                top_p=req.top_p,
-                seed=req.seed,
-            )
-        except Exception as e:
-            yield _sse_event({"stage": "error", "detail": f"OpenRouter query failed: {e}"})
-            return
-        if not response_text:
-            yield _sse_event({"stage": "error", "detail": "OpenRouter returned empty response"})
-            return
         yield _sse_event({"stage": "loading_model", "detail": "Loading model (faux)..."})
         time.sleep(0.5)
         yield _sse_event({"stage": "verifying", "detail": "Verifying (faux)..."})
-        time.sleep(0.5)
+        time.sleep(0.8)
         response = _faux_response(
-            response_text,
+            req.response_text,
             seed=req.seed,
             gls_threshold=req.gls_threshold,
             logit_rank_threshold=req.logit_rank_threshold,
@@ -502,33 +500,14 @@ def query_and_verify_stream(req: QueryAndVerifyRequest):
         return StreamingResponse(generate_faux(), media_type="text/event-stream")
 
     def generate():
-        yield _sse_event({"stage": "querying_openrouter", "detail": "Querying OpenRouter..."})
-
-        try:
-            response_text = query_openrouter(
-                req.prompt,
-                max_tokens=req.max_tokens,
-                temperature=req.temperature,
-                top_k=req.top_k,
-                top_p=req.top_p,
-                seed=req.seed,
-            )
-        except Exception as e:
-            yield _sse_event({"stage": "error", "detail": f"OpenRouter query failed: {e}"})
-            return
-
-        if not response_text:
-            yield _sse_event({"stage": "error", "detail": "OpenRouter returned empty response"})
-            return
-
         yield _sse_event({"stage": "loading_model", "detail": "Loading verification model..."})
 
         tokenizer = AutoTokenizer.from_pretrained(DEFAULT_MODEL)
         prompt_token_ids = tokenizer.encode(req.prompt, add_special_tokens=True)
-        response_token_ids = tokenizer.encode(response_text, add_special_tokens=False)
+        response_token_ids = tokenizer.encode(req.response_text, add_special_tokens=False)
 
         if not response_token_ids:
-            yield _sse_event({"stage": "error", "detail": "Tokenized response is empty"})
+            yield _sse_event({"stage": "error", "detail": "Response text tokenized to empty sequence"})
             return
 
         mock_output = MockRequestOutput(

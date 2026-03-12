@@ -33,13 +33,15 @@ def get_ui_html() -> str:
   .form-group input { width: 120px; }
   .form-group textarea { width: 100%; min-height: 80px; resize: vertical; font-family: inherit; }
   .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #3b82f6; }
-  .toggle-advanced { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.8rem; padding: 0.25rem 0; }
-  .toggle-advanced:hover { color: var(--text); }
+  .toggle-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.8rem; padding: 0.25rem 0; }
+  .toggle-btn:hover { color: var(--text); }
   .advanced { display: none; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
   .advanced.show { display: block; }
   button.primary { background: #3b82f6; color: white; border: none; padding: 0.5rem 1.25rem; border-radius: 0.375rem; cursor: pointer; font-size: 0.875rem; font-weight: 600; }
   button.primary:hover { background: #2563eb; }
   button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary { background: var(--bg); color: var(--muted); border: 1px solid var(--border); padding: 0.4rem 0.75rem; border-radius: 0.375rem; cursor: pointer; font-size: 0.75rem; font-weight: 600; }
+  button.secondary:hover { color: var(--text); border-color: var(--muted); }
   .error-banner { background: #7f1d1d; border: 1px solid var(--dangerous); border-radius: 0.375rem; padding: 0.75rem 1rem; margin-bottom: 1rem; display: none; font-size: 0.875rem; }
   .results { display: none; }
   .results.show { display: block; }
@@ -94,8 +96,15 @@ def get_ui_html() -> str:
   .token-tooltip { display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #0f172a; border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.35rem 0.5rem; font-size: 0.7rem; white-space: nowrap; z-index: 10; color: var(--text); pointer-events: none; }
   .token-span:hover .token-tooltip { display: block; }
 
-  /* Prompt textarea full-width */
+  /* Full-width elements */
   .prompt-group { width: 100%; }
+
+  /* Response preview */
+  .response-preview { background: var(--bg); border: 1px solid var(--border); border-radius: 0.375rem; padding: 1rem; font-size: 0.875rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word; margin-bottom: 0.75rem; max-height: 300px; overflow-y: auto; }
+
+  /* Section header with actions */
+  .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+  .section-header h2 { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -110,16 +119,15 @@ def get_ui_html() -> str:
     </div>
   </div>
 
-  <div class="card">
-    <h2>Run Verification</h2>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('local')">Verify Local (vLLM)</button>
+    <button class="tab-btn" onclick="switchTab('openrouter')">Query & Verify (OpenRouter)</button>
+  </div>
 
-    <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('local')">Verify Local (vLLM)</button>
-      <button class="tab-btn" onclick="switchTab('openrouter')">Query & Verify (OpenRouter)</button>
-    </div>
-
-    <!-- Local vLLM tab -->
-    <div class="tab-panel active" id="tab-local">
+  <!-- ============ Local vLLM tab ============ -->
+  <div class="tab-panel active" id="tab-local">
+    <div class="card">
+      <h2>Run Verification</h2>
       <div class="form-row">
         <div class="form-group">
           <label>Prompts</label>
@@ -131,10 +139,26 @@ def get_ui_html() -> str:
         </div>
         <button class="primary" id="run-btn-local" onclick="runVerifyLocal()">Run Verification</button>
       </div>
+      <button class="toggle-btn" onclick="toggleAdvanced('adv-local')">&#9660; Advanced Options</button>
+      <div class="advanced" id="adv-local">
+        <div class="form-row">
+          <div class="form-group"><label>Temperature</label><input type="number" id="temperature" value="1.0" step="0.1" min="0"></div>
+          <div class="form-group"><label>Top K</label><input type="number" id="top_k" value="50" min="1"></div>
+          <div class="form-group"><label>Top P</label><input type="number" id="top_p" value="0.95" step="0.05" min="0" max="1"></div>
+          <div class="form-group"><label>Seed</label><input type="number" id="seed" value="42"></div>
+          <div class="form-group"><label>GLS Threshold</label><input type="number" id="gls_threshold" value="-5.0" step="0.5"></div>
+          <div class="form-group"><label>Rank Threshold</label><input type="number" id="logit_rank_threshold" value="10" min="1"></div>
+        </div>
+      </div>
     </div>
+  </div>
 
-    <!-- OpenRouter tab -->
-    <div class="tab-panel" id="tab-openrouter">
+  <!-- ============ OpenRouter tab ============ -->
+  <div class="tab-panel" id="tab-openrouter">
+
+    <!-- Step 1: Query -->
+    <div class="card">
+      <h2>1. Query OpenRouter</h2>
       <div class="form-row">
         <div class="form-group prompt-group">
           <label>Prompt</label>
@@ -146,36 +170,42 @@ def get_ui_html() -> str:
           <label>Max Tokens</label>
           <input type="number" id="or_max_tokens" value="100" min="1" max="500">
         </div>
-        <button class="primary" id="run-btn-or" onclick="runQueryAndVerify()">Query & Verify</button>
+        <button class="primary" id="run-btn-query" onclick="runQuery()">Query OpenRouter</button>
+      </div>
+      <button class="toggle-btn" onclick="toggleAdvanced('adv-query')">&#9660; Query Options</button>
+      <div class="advanced" id="adv-query">
+        <div class="section-header"><span></span><button class="secondary" onclick="resetQueryDefaults()">Reset to Defaults</button></div>
+        <div class="form-row">
+          <div class="form-group"><label>Temperature</label><input type="number" id="or_q_temperature" value="1.0" step="0.1" min="0"></div>
+          <div class="form-group"><label>Top K</label><input type="number" id="or_q_top_k" value="50" min="1"></div>
+          <div class="form-group"><label>Top P</label><input type="number" id="or_q_top_p" value="0.95" step="0.05" min="0" max="1"></div>
+          <div class="form-group"><label>Seed</label><input type="number" id="or_q_seed" value="42"></div>
+        </div>
       </div>
     </div>
 
-    <button class="toggle-advanced" onclick="toggleAdvanced()">&#9660; Advanced Options</button>
-    <div class="advanced" id="advanced">
+    <!-- Response preview (hidden until query completes) -->
+    <div class="card" id="response-card" style="display:none">
+      <h2>Response</h2>
+      <div class="response-preview" id="response-preview"></div>
+    </div>
+
+    <!-- Step 2: Verify (hidden until query completes) -->
+    <div class="card" id="verify-card" style="display:none">
+      <h2>2. Verify Response</h2>
       <div class="form-row">
-        <div class="form-group">
-          <label>Temperature</label>
-          <input type="number" id="temperature" value="1.0" step="0.1" min="0">
-        </div>
-        <div class="form-group">
-          <label>Top K</label>
-          <input type="number" id="top_k" value="50" min="1">
-        </div>
-        <div class="form-group">
-          <label>Top P</label>
-          <input type="number" id="top_p" value="0.95" step="0.05" min="0" max="1">
-        </div>
-        <div class="form-group">
-          <label>Seed</label>
-          <input type="number" id="seed" value="42">
-        </div>
-        <div class="form-group">
-          <label>GLS Threshold</label>
-          <input type="number" id="gls_threshold" value="-5.0" step="0.5">
-        </div>
-        <div class="form-group">
-          <label>Rank Threshold</label>
-          <input type="number" id="logit_rank_threshold" value="10" min="1">
+        <button class="primary" id="run-btn-verify" onclick="runVerifyText()">Run Verification</button>
+      </div>
+      <button class="toggle-btn" onclick="toggleAdvanced('adv-verify')">&#9660; Verification Options</button>
+      <div class="advanced" id="adv-verify">
+        <div class="section-header"><span></span><button class="secondary" onclick="resetVerifyDefaults()">Reset to Defaults</button></div>
+        <div class="form-row">
+          <div class="form-group"><label>Temperature</label><input type="number" id="or_v_temperature" value="1.0" step="0.1" min="0"></div>
+          <div class="form-group"><label>Top K</label><input type="number" id="or_v_top_k" value="50" min="1"></div>
+          <div class="form-group"><label>Top P</label><input type="number" id="or_v_top_p" value="0.95" step="0.05" min="0" max="1"></div>
+          <div class="form-group"><label>Seed</label><input type="number" id="or_v_seed" value="42"></div>
+          <div class="form-group"><label>GLS Threshold</label><input type="number" id="or_v_gls_threshold" value="-5.0" step="0.5"></div>
+          <div class="form-group"><label>Rank Threshold</label><input type="number" id="or_v_logit_rank_threshold" value="10" min="1"></div>
         </div>
       </div>
     </div>
@@ -210,10 +240,18 @@ def get_ui_html() -> str:
 
 <script>
 let currentTab = 'local';
-let activeAbort = null;
+
+// State for the two-step OpenRouter flow
+let queriedPrompt = '';
+let queriedResponseText = '';
+
+const DEFAULTS = {
+  temperature: 1.0, top_k: 50, top_p: 0.95, seed: 42,
+  gls_threshold: -5.0, logit_rank_threshold: 10,
+};
 
 const STAGES_LOCAL = ['generating', 'loading_model', 'verifying', 'done'];
-const STAGES_OR = ['querying_openrouter', 'loading_model', 'verifying', 'done'];
+const STAGES_VERIFY = ['loading_model', 'verifying', 'done'];
 const STAGE_LABELS = {
   generating: 'Generating',
   loading_model: 'Loading Model',
@@ -226,13 +264,16 @@ async function loadConfig() {
   try {
     const res = await fetch('/config');
     const cfg = await res.json();
-    const grid = document.getElementById('config-grid');
-    grid.innerHTML = Object.entries(cfg).map(([k, v]) =>
+    document.getElementById('config-grid').innerHTML = Object.entries(cfg).map(([k, v]) =>
       `<div class="config-item"><span class="label">${k.replace(/_/g, ' ')}:</span> <span class="value">${v}</span></div>`
     ).join('');
-    if (cfg.seed !== undefined) document.getElementById('seed').value = cfg.seed;
-    if (cfg.gls_threshold !== undefined) document.getElementById('gls_threshold').value = cfg.gls_threshold;
-    if (cfg.logit_rank_threshold !== undefined) document.getElementById('logit_rank_threshold').value = cfg.logit_rank_threshold;
+    if (cfg.seed !== undefined) DEFAULTS.seed = cfg.seed;
+    if (cfg.gls_threshold !== undefined) DEFAULTS.gls_threshold = cfg.gls_threshold;
+    if (cfg.logit_rank_threshold !== undefined) DEFAULTS.logit_rank_threshold = cfg.logit_rank_threshold;
+    // Apply defaults to all fields
+    resetLocalDefaults();
+    resetQueryDefaults();
+    resetVerifyDefaults();
   } catch (e) {
     document.getElementById('config-grid').innerHTML = '<div class="config-item"><span class="label">Failed to load config</span></div>';
   }
@@ -247,8 +288,33 @@ function switchTab(tab) {
   document.getElementById('tab-openrouter').classList.toggle('active', tab === 'openrouter');
 }
 
-function toggleAdvanced() {
-  document.getElementById('advanced').classList.toggle('show');
+function toggleAdvanced(id) {
+  document.getElementById(id).classList.toggle('show');
+}
+
+function resetLocalDefaults() {
+  document.getElementById('temperature').value = DEFAULTS.temperature;
+  document.getElementById('top_k').value = DEFAULTS.top_k;
+  document.getElementById('top_p').value = DEFAULTS.top_p;
+  document.getElementById('seed').value = DEFAULTS.seed;
+  document.getElementById('gls_threshold').value = DEFAULTS.gls_threshold;
+  document.getElementById('logit_rank_threshold').value = DEFAULTS.logit_rank_threshold;
+}
+
+function resetQueryDefaults() {
+  document.getElementById('or_q_temperature').value = DEFAULTS.temperature;
+  document.getElementById('or_q_top_k').value = DEFAULTS.top_k;
+  document.getElementById('or_q_top_p').value = DEFAULTS.top_p;
+  document.getElementById('or_q_seed').value = DEFAULTS.seed;
+}
+
+function resetVerifyDefaults() {
+  document.getElementById('or_v_temperature').value = DEFAULTS.temperature;
+  document.getElementById('or_v_top_k').value = DEFAULTS.top_k;
+  document.getElementById('or_v_top_p').value = DEFAULTS.top_p;
+  document.getElementById('or_v_seed').value = DEFAULTS.seed;
+  document.getElementById('or_v_gls_threshold').value = DEFAULTS.gls_threshold;
+  document.getElementById('or_v_logit_rank_threshold').value = DEFAULTS.logit_rank_threshold;
 }
 
 function showError(msg) {
@@ -261,27 +327,24 @@ function hideError() {
   document.getElementById('error').style.display = 'none';
 }
 
-function setButtons(disabled) {
-  document.getElementById('run-btn-local').disabled = disabled;
-  document.getElementById('run-btn-or').disabled = disabled;
+function setAllButtons(disabled) {
+  for (const id of ['run-btn-local', 'run-btn-query', 'run-btn-verify']) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disabled;
+  }
 }
 
 function showProgress(stages) {
   const el = document.getElementById('progress');
-  const inner = document.getElementById('progress-stages');
-  inner.innerHTML = stages.map((s, i) => {
+  document.getElementById('progress-stages').innerHTML = stages.map((s, i) => {
     const arrow = i < stages.length - 1 ? '<span class="stage-arrow">&#9654;</span>' : '';
     return `<span class="stage" id="stage-${s}"><span class="stage-dot"></span>${STAGE_LABELS[s]}</span>${arrow}`;
   }).join('');
   el.classList.add('show');
 }
 
-function updateStage(stage) {
-  // Mark all previous stages as done, current as active
-  document.querySelectorAll('.stage').forEach(el => {
-    el.classList.remove('active', 'done');
-  });
-  const stages = currentTab === 'openrouter' ? STAGES_OR : STAGES_LOCAL;
+function updateStage(stage, stages) {
+  document.querySelectorAll('.stage').forEach(el => el.classList.remove('active', 'done'));
   let found = false;
   for (const s of stages) {
     const el = document.getElementById('stage-' + s);
@@ -299,17 +362,6 @@ function hideProgress() {
   document.getElementById('progress').classList.remove('show');
 }
 
-function getAdvancedConfig() {
-  return {
-    temperature: parseFloat(document.getElementById('temperature').value),
-    top_k: parseInt(document.getElementById('top_k').value),
-    top_p: parseFloat(document.getElementById('top_p').value),
-    seed: parseInt(document.getElementById('seed').value),
-    gls_threshold: parseFloat(document.getElementById('gls_threshold').value),
-    logit_rank_threshold: parseInt(document.getElementById('logit_rank_threshold').value),
-  };
-}
-
 function escapeHtml(s) {
   const div = document.createElement('div');
   div.textContent = s;
@@ -317,7 +369,7 @@ function escapeHtml(s) {
 }
 
 async function consumeSSE(url, body, stages) {
-  setButtons(true);
+  setAllButtons(true);
   hideError();
   document.getElementById('results').classList.remove('show');
   showProgress(stages);
@@ -342,54 +394,99 @@ async function consumeSSE(url, body, stages) {
       const {done, value} = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, {stream: true});
-
       const lines = buffer.split('\\n');
       buffer = lines.pop() || '';
-
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = JSON.parse(line.slice(6));
-          if (data.stage === 'error') {
-            throw new Error(data.detail);
-          }
-          updateStage(data.stage);
-          if (data.stage === 'done' && data.result) {
-            renderResults(data.result);
-          }
+          if (data.stage === 'error') throw new Error(data.detail);
+          updateStage(data.stage, stages);
+          if (data.stage === 'done' && data.result) renderResults(data.result);
         }
       }
     }
   } catch (e) {
-    showError('Verification failed: ' + e.message);
+    showError('Failed: ' + e.message);
   } finally {
-    setButtons(false);
+    setAllButtons(false);
     hideProgress();
   }
 }
 
 async function runVerifyLocal() {
-  const cfg = getAdvancedConfig();
   const body = {
     n_prompts: parseInt(document.getElementById('n_prompts').value),
     max_tokens: parseInt(document.getElementById('max_tokens').value),
-    config: cfg,
+    config: {
+      temperature: parseFloat(document.getElementById('temperature').value),
+      top_k: parseInt(document.getElementById('top_k').value),
+      top_p: parseFloat(document.getElementById('top_p').value),
+      seed: parseInt(document.getElementById('seed').value),
+      gls_threshold: parseFloat(document.getElementById('gls_threshold').value),
+      logit_rank_threshold: parseInt(document.getElementById('logit_rank_threshold').value),
+    },
   };
   await consumeSSE('/verify-stream', body, STAGES_LOCAL);
 }
 
-async function runQueryAndVerify() {
+async function runQuery() {
   const prompt = document.getElementById('or_prompt').value.trim();
-  if (!prompt) {
-    showError('Please enter a prompt.');
-    return;
-  }
-  const cfg = getAdvancedConfig();
+  if (!prompt) { showError('Please enter a prompt.'); return; }
+
+  setAllButtons(true);
+  hideError();
+  document.getElementById('results').classList.remove('show');
+  document.getElementById('response-card').style.display = 'none';
+  document.getElementById('verify-card').style.display = 'none';
+
   const body = {
     prompt: prompt,
     max_tokens: parseInt(document.getElementById('or_max_tokens').value),
-    ...cfg,
+    temperature: parseFloat(document.getElementById('or_q_temperature').value),
+    top_k: parseInt(document.getElementById('or_q_top_k').value),
+    top_p: parseFloat(document.getElementById('or_q_top_p').value),
+    seed: parseInt(document.getElementById('or_q_seed').value),
   };
-  await consumeSSE('/query-and-verify-stream', body, STAGES_OR);
+
+  try {
+    const res = await fetch('/query', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({detail: res.statusText}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    queriedPrompt = data.prompt;
+    queriedResponseText = data.response_text;
+
+    // Show the response and verify card
+    document.getElementById('response-preview').textContent = queriedResponseText;
+    document.getElementById('response-card').style.display = 'block';
+    document.getElementById('verify-card').style.display = 'block';
+  } catch (e) {
+    showError('Query failed: ' + e.message);
+  } finally {
+    setAllButtons(false);
+  }
+}
+
+async function runVerifyText() {
+  if (!queriedResponseText) { showError('No response to verify. Query OpenRouter first.'); return; }
+
+  const body = {
+    prompt: queriedPrompt,
+    response_text: queriedResponseText,
+    temperature: parseFloat(document.getElementById('or_v_temperature').value),
+    top_k: parseInt(document.getElementById('or_v_top_k').value),
+    top_p: parseFloat(document.getElementById('or_v_top_p').value),
+    seed: parseInt(document.getElementById('or_v_seed').value),
+    gls_threshold: parseFloat(document.getElementById('or_v_gls_threshold').value),
+    logit_rank_threshold: parseInt(document.getElementById('or_v_logit_rank_threshold').value),
+  };
+  await consumeSSE('/verify-text-stream', body, STAGES_VERIFY);
 }
 
 function renderResults(data) {
@@ -402,7 +499,6 @@ function renderResults(data) {
     {cls: 'dangerous', count: data.num_dangerous, pct: data.dangerous_pct},
   ].map(s => `<div class="stat ${s.cls}"><div class="count">${s.count}</div><div class="pct">${s.pct}%</div><div class="stat-label">${s.cls}</div></div>`).join('');
 
-  // Token-highlighted text
   const textSection = document.getElementById('verified-text-section');
   const tokenDisplay = document.getElementById('token-display');
   const hasTokenText = data.tokens && data.tokens.some(t => t.token_text);
@@ -419,7 +515,6 @@ function renderResults(data) {
     textSection.style.display = 'none';
   }
 
-  // Table
   document.getElementById('tokens-body').innerHTML = data.tokens.map((t, i) =>
     `<tr><td>${i + 1}</td><td><code>${escapeHtml(t.token_text || '-')}</code></td><td>${t.gls_score.toFixed(4)}</td><td>${t.logit_rank}</td><td><span class="badge ${t.classification}">${t.classification}</span></td></tr>`
   ).join('');

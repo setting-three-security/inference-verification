@@ -17,8 +17,9 @@ shim:
   paths:
     - /verify
     - /verify-stream
-    - /query-and-verify
-    - /query-and-verify-stream
+    - /query
+    - /verify-text
+    - /verify-text-stream
     - /health
     - /config
     - /ui
