@@ -507,7 +507,8 @@ function renderResults(data) {
     tokenDisplay.innerHTML = data.tokens.map(t => {
       const cls = t.classification;
       const text = escapeHtml(t.token_text);
-      const tooltip = `GLS: ${t.gls_score.toFixed(4)} | Rank: ${t.logit_rank} | ${cls}`;
+      const glsStr = t.gls_score != null ? t.gls_score.toFixed(4) : 'N/A';
+      const tooltip = `GLS: ${glsStr} | Rank: ${t.logit_rank} | ${cls}`;
       return `<span class="token-span ${cls}"><span class="token-tooltip">${escapeHtml(tooltip)}</span>${text}</span>`;
     }).join('');
     textSection.style.display = 'block';
@@ -516,7 +517,7 @@ function renderResults(data) {
   }
 
   document.getElementById('tokens-body').innerHTML = data.tokens.map((t, i) =>
-    `<tr><td>${i + 1}</td><td><code>${escapeHtml(t.token_text || '-')}</code></td><td>${t.gls_score.toFixed(4)}</td><td>${t.logit_rank}</td><td><span class="badge ${t.classification}">${t.classification}</span></td></tr>`
+    `<tr><td>${i + 1}</td><td><code>${escapeHtml(t.token_text || '-')}</code></td><td>${t.gls_score != null ? t.gls_score.toFixed(4) : 'N/A'}</td><td>${t.logit_rank}</td><td><span class="badge ${t.classification}">${t.classification}</span></td></tr>`
   ).join('');
 
   document.getElementById('results').classList.add('show');

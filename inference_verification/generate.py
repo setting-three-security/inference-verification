@@ -125,7 +125,9 @@ def generate_with_vllm(cfg: GenerationConfig, prompts: list[list[int]], max_mode
     )
 
     print(f"Generating {len(prompts)} sequences...")
-    outputs = model.generate(prompt_token_ids=prompts, sampling_params=sampling_params)
+    # vLLM 0.17+ uses TokensPrompt dicts instead of prompt_token_ids kwarg
+    token_prompts = [{"prompt_token_ids": p} for p in prompts]
+    outputs = model.generate(token_prompts, sampling_params=sampling_params)
 
     del model
     torch.cuda.empty_cache()
