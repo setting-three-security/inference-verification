@@ -373,6 +373,7 @@ def verify_stream(req: VerifyRequest):
         raise HTTPException(status_code=503, detail="CUDA not available")
 
     def generate():
+      try:
         overrides = req.config or {}
 
         gen_cfg = GenerationConfig(
@@ -415,6 +416,10 @@ def verify_stream(req: VerifyRequest):
         )
 
         yield _sse_event({"stage": "done", "result": response.model_dump()})
+      except Exception as e:
+        import traceback
+        traceback.print_exc()
+        yield _sse_event({"stage": "error", "detail": f"{type(e).__name__}: {e}"})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -505,6 +510,7 @@ def verify_text_stream(req: VerifyTextRequest):
         return StreamingResponse(generate_faux(), media_type="text/event-stream")
 
     def generate():
+      try:
         yield _sse_event({"stage": "loading_model", "detail": "Loading verification model..."})
 
         tokenizer = AutoTokenizer.from_pretrained(DEFAULT_MODEL)
@@ -540,6 +546,10 @@ def verify_text_stream(req: VerifyTextRequest):
         )
 
         yield _sse_event({"stage": "done", "result": response.model_dump()})
+      except Exception as e:
+        import traceback
+        traceback.print_exc()
+        yield _sse_event({"stage": "error", "detail": f"{type(e).__name__}: {e}"})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
