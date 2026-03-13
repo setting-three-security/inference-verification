@@ -22,10 +22,13 @@ def _read_key() -> str:
     key = os.environ.get("OPENROUTER_DEMO", "").strip()
     if key:
         return key
-    key = KEY_PATH.read_text().strip()
-    if not key:
-        raise RuntimeError("No OpenRouter API key found in OPENROUTER_DEMO env var or file")
-    return key
+    try:
+        key = KEY_PATH.read_text().strip()
+        if key:
+            return key
+    except FileNotFoundError:
+        pass
+    raise RuntimeError("No OpenRouter API key found in OPENROUTER_DEMO env var or file")
 
 
 def query_openrouter(

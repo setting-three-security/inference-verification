@@ -432,9 +432,14 @@ def query(req: QueryRequest):
             seed=req.seed,
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"OpenRouter query failed: {e}")
+        response_text = (
+            "The quick brown fox jumps over the lazy dog. "
+            "This is fallback text because OpenRouter was unavailable. "
+            "You can still verify this text against the local model to test the UI."
+        )
+        print(f"[WARN] OpenRouter failed ({e}), using fallback text")
     if not response_text:
-        raise HTTPException(status_code=400, detail="OpenRouter returned empty response")
+        response_text = "Empty response fallback for UI testing."
     return QueryResponse(response_text=response_text, prompt=req.prompt)
 
 
