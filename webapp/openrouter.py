@@ -2,9 +2,11 @@
 Standalone OpenRouter API helper.
 
 Calls Llama 3.1 8B Instruct via OpenRouter's OpenAI-compatible API.
-Reads the API key from SECRETS/openrouter__mats.key (file only, no env var).
+Reads the API key from the OPENROUTER__DEMO env var, falling back to
+SECRETS/openrouter__mats.key file.
 """
 
+import os
 from pathlib import Path
 from dataclasses import dataclass, field
 
@@ -16,10 +18,13 @@ DEFAULT_MODEL = "meta-llama/llama-3.1-8b-instruct"
 
 
 def _read_key() -> str:
-    """Read OpenRouter API key from file."""
+    """Read OpenRouter API key from env var or file."""
+    key = os.environ.get("OPENROUTER_DEMO", "").strip()
+    if key:
+        return key
     key = KEY_PATH.read_text().strip()
     if not key:
-        raise RuntimeError(f"Empty API key in {KEY_PATH}")
+        raise RuntimeError("No OpenRouter API key found in OPENROUTER_DEMO env var or file")
     return key
 
 
