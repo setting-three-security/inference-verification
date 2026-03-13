@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: benhagag10/inference-verification-tee
+  IMAGE_NAME: setting-three-security/inference-verification-tee
 
 jobs:
   build-and-push:
