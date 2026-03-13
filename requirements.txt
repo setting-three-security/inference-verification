@@ -14,7 +14,7 @@ requests>=2.32.3
 seaborn>=0.13.2
 setuptools>=75.3.2
 wheel>=0.45.1
-transformers==4.53.2
+transformers>=4.56.0
 torchvision==0.22.1
 xformers
 torch==2.7.1

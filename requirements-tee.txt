@@ -15,7 +15,7 @@
 vllm>=0.10.0
 
 # --- Model loading & tokenization ---
-transformers==4.53.2
+transformers>=4.56.0
 huggingface-hub>=0.33.1
 hf-transfer>=0.1.9          # fast model downloads via HF_HUB_ENABLE_HF_TRANSFER=1
 
@@ -23,6 +23,7 @@ hf-transfer>=0.1.9          # fast model downloads via HF_HUB_ENABLE_HF_TRANSFER
 fastapi>=0.115.0
 uvicorn>=0.32.0
 pydantic                     # request/response models (also a fastapi dep)
+openai                       # OpenRouter API (OpenAI-compatible client)
 
 # --- Used in generate.py / verify.py / scoring_functions ---
 accelerate                   # required for device_map="auto" in verify.py

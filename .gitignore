@@ -12,3 +12,5 @@ gumbel_cgs_analysis_results/
 *.egg-info/
 dist/
 build/
+
+ghcrio_login.sh
