@@ -8,6 +8,7 @@ of LLM outputs using Gumbel Likelihood Scores (GLS).
 import os
 import sys
 import json
+import math
 import time
 import random
 from pathlib import Path
@@ -89,7 +90,7 @@ class VerifyTextRequest(BaseModel):
 
 
 class TokenResult(BaseModel):
-    gls_score: float
+    gls_score: Optional[float] = None
     logit_rank: int
     classification: str
     token_text: str = ""
@@ -217,8 +218,9 @@ if not FAUX_MODE:
             if isinstance(gls, torch.Tensor):
                 gls = gls.item()
             token_text = tokenizer.decode([gen_token_ids[i]]) if i < len(gen_token_ids) else ""
+            gls_val = float(gls)
             tokens.append(TokenResult(
-                gls_score=float(gls),
+                gls_score=gls_val if math.isfinite(gls_val) else None,
                 logit_rank=int(result["logit_rank"]),
                 classification=classification["classifications"][i].value,
                 token_text=token_text,
