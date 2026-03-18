@@ -7,13 +7,13 @@ def get_ui_html() -> str:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TEE Inference Verification</title>
+<title>Inference Verification in a TEE</title>
 <style>
   :root {
     --safe: #22c55e; --suspicious: #f59e0b; --dangerous: #ef4444;
     --bg: #0f172a; --surface: #1e293b; --border: #334155;
     --text: #e2e8f0; --muted: #94a3b8;
-    --safe-bg: rgba(34,197,94,0.18); --suspicious-bg: rgba(245,158,11,0.18); --dangerous-bg: rgba(239,68,68,0.18);
+    --safe-bg: rgba(34,197,94,0.45); --suspicious-bg: rgba(245,158,11,0.4); --dangerous-bg: rgba(239,68,68,0.4);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
@@ -54,14 +54,6 @@ def get_ui_html() -> str:
   .stat.suspicious .count { color: var(--suspicious); }
   .stat.dangerous .count { color: var(--dangerous); }
   .meta { font-size: 0.8rem; color: var(--muted); margin-bottom: 1rem; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-  th { text-align: left; padding: 0.5rem; border-bottom: 2px solid var(--border); color: var(--muted); text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; }
-  td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
-  .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
-  .badge.safe { background: #14532d; color: var(--safe); }
-  .badge.suspicious { background: #78350f; color: var(--suspicious); }
-  .badge.dangerous { background: #7f1d1d; color: var(--dangerous); }
-  .table-wrap { max-height: 400px; overflow-y: auto; border-radius: 0.375rem; }
 
   /* Tabs */
   .tabs { display: flex; gap: 0; margin-bottom: 1rem; }
@@ -109,8 +101,8 @@ def get_ui_html() -> str:
 </head>
 <body>
 <div class="container">
-  <h1>TEE Inference Verification</h1>
-  <p class="subtitle">Verify LLM outputs for model weight exfiltration detection</p>
+  <h1>Inference Verification in a Trusted Execution Environment (TEE)</h1>
+  <p class="subtitle">We use <a href="https://arxiv.org/abs/2511.02620" target="_blank" style="color: #3b82f6;">inference verification</a> to verify that text actually came from a model. This runs on an Nvidia H200 TEE, with the TEE code built and hosted by <a href="https://tinfoil.sh" target="_blank" style="color: #3b82f6;">tinfoil.sh</a>.</p>
 
   <div class="card" id="config-card">
     <h2>Configuration</h2>
@@ -120,23 +112,31 @@ def get_ui_html() -> str:
   </div>
 
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('local')">Verify Local (vLLM)</button>
-    <button class="tab-btn" onclick="switchTab('openrouter')">Query & Verify (OpenRouter)</button>
+    <button class="tab-btn" onclick="switchTab('local')">Verify Local Text</button>
+    <button class="tab-btn active" onclick="switchTab('openrouter')">Query & Verify (OpenRouter)</button>
   </div>
 
-  <!-- ============ Local vLLM tab ============ -->
-  <div class="tab-panel active" id="tab-local">
+  <!-- ============ Verify Local Text tab ============ -->
+  <div class="tab-panel" id="tab-local">
     <div class="card">
-      <h2>Run Verification</h2>
+      <h2>Verify Local Text</h2>
       <div class="form-row">
-        <div class="form-group">
-          <label>Prompts</label>
-          <input type="number" id="n_prompts" value="5" min="1" max="100">
+        <div class="form-group prompt-group">
+          <label>Prompt</label>
+          <textarea id="local_prompt" placeholder="Enter the prompt that was used to generate the text..."></textarea>
         </div>
-        <div class="form-group">
-          <label>Max Tokens</label>
-          <input type="number" id="max_tokens" value="50" min="1" max="500">
+      </div>
+      <div class="form-row">
+        <div class="form-group prompt-group">
+          <label>Response Text to Verify</label>
+          <textarea id="local_response_text" placeholder="Paste the response text you want to verify..." style="min-height: 120px;"></textarea>
         </div>
+      </div>
+      <div id="local-text-preview" style="display:none; margin-bottom: 0.75rem;">
+        <div style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem;">Text to be verified</div>
+        <div class="response-preview" id="local-text-preview-content"></div>
+      </div>
+      <div class="form-row">
         <button class="primary" id="run-btn-local" onclick="runVerifyLocal()">Run Verification</button>
       </div>
       <button class="toggle-btn" onclick="toggleAdvanced('adv-local')">&#9660; Advanced Options</button>
@@ -154,7 +154,7 @@ def get_ui_html() -> str:
   </div>
 
   <!-- ============ OpenRouter tab ============ -->
-  <div class="tab-panel" id="tab-openrouter">
+  <div class="tab-panel active" id="tab-openrouter">
 
     <!-- Step 1: Query -->
     <div class="card">
@@ -228,18 +228,12 @@ def get_ui_html() -> str:
         <h3>Verified Text</h3>
         <div class="token-display" id="token-display"></div>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>#</th><th>Token</th><th>GLS Score</th><th>Logit Rank</th><th>Classification</th></tr></thead>
-          <tbody id="tokens-body"></tbody>
-        </table>
-      </div>
     </div>
   </div>
 </div>
 
 <script>
-let currentTab = 'local';
+let currentTab = 'openrouter';
 
 // State for the two-step OpenRouter flow
 let queriedPrompt = '';
@@ -250,13 +244,10 @@ const DEFAULTS = {
   gls_threshold: -5.0, logit_rank_threshold: 10,
 };
 
-const STAGES_LOCAL = ['generating', 'loading_model', 'verifying', 'done'];
 const STAGES_VERIFY = ['loading_model', 'verifying', 'done'];
 const STAGE_LABELS = {
-  generating: 'Generating',
   loading_model: 'Loading Model',
   verifying: 'Verifying',
-  querying_openrouter: 'Querying OpenRouter',
   done: 'Done',
 };
 
@@ -414,19 +405,26 @@ async function consumeSSE(url, body, stages) {
 }
 
 async function runVerifyLocal() {
+  const prompt = document.getElementById('local_prompt').value.trim();
+  const responseText = document.getElementById('local_response_text').value.trim();
+  if (!prompt) { showError('Please enter a prompt.'); return; }
+  if (!responseText) { showError('Please enter response text to verify.'); return; }
+
+  // Show the text preview block
+  document.getElementById('local-text-preview-content').textContent = responseText;
+  document.getElementById('local-text-preview').style.display = 'block';
+
   const body = {
-    n_prompts: parseInt(document.getElementById('n_prompts').value),
-    max_tokens: parseInt(document.getElementById('max_tokens').value),
-    config: {
-      temperature: parseFloat(document.getElementById('temperature').value),
-      top_k: parseInt(document.getElementById('top_k').value),
-      top_p: parseFloat(document.getElementById('top_p').value),
-      seed: parseInt(document.getElementById('seed').value),
-      gls_threshold: parseFloat(document.getElementById('gls_threshold').value),
-      logit_rank_threshold: parseInt(document.getElementById('logit_rank_threshold').value),
-    },
+    prompt: prompt,
+    response_text: responseText,
+    temperature: parseFloat(document.getElementById('temperature').value),
+    top_k: parseInt(document.getElementById('top_k').value),
+    top_p: parseFloat(document.getElementById('top_p').value),
+    seed: parseInt(document.getElementById('seed').value),
+    gls_threshold: parseFloat(document.getElementById('gls_threshold').value),
+    logit_rank_threshold: parseInt(document.getElementById('logit_rank_threshold').value),
   };
-  await consumeSSE('/verify-stream', body, STAGES_LOCAL);
+  await consumeSSE('/verify-text-stream', body, STAGES_VERIFY);
 }
 
 async function runQuery() {
@@ -515,10 +513,6 @@ function renderResults(data) {
   } else {
     textSection.style.display = 'none';
   }
-
-  document.getElementById('tokens-body').innerHTML = data.tokens.map((t, i) =>
-    `<tr><td>${i + 1}</td><td><code>${escapeHtml(t.token_text || '-')}</code></td><td>${t.gls_score != null ? t.gls_score.toFixed(4) : 'N/A'}</td><td>${t.logit_rank}</td><td><span class="badge ${t.classification}">${t.classification}</span></td></tr>`
-  ).join('');
 
   document.getElementById('results').classList.add('show');
 }

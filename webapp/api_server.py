@@ -219,10 +219,19 @@ if not FAUX_MODE:
                 gls = gls.item()
             token_text = tokenizer.decode([gen_token_ids[i]]) if i < len(gen_token_ids) else ""
             gls_val = float(gls)
+            cls = classification["classifications"][i].value
+            # First token is always unverifiable (no prior context), force safe
+            if i == 0 and cls != "safe":
+                cls = "safe"
+                classification["num_safe"] += 1
+                if classification["classifications"][i].value == "suspicious":
+                    classification["num_suspicious"] -= 1
+                elif classification["classifications"][i].value == "dangerous":
+                    classification["num_dangerous"] -= 1
             tokens.append(TokenResult(
                 gls_score=gls_val if math.isfinite(gls_val) else None,
                 logit_rank=int(result["logit_rank"]),
-                classification=classification["classifications"][i].value,
+                classification=cls,
                 token_text=token_text,
             ))
 
