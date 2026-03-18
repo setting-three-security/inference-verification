@@ -1,4 +1,4 @@
-"""Self-contained HTML UI for the inference verification API."""
+"""Self-contained HTML UI for the inference verification API (TEE)."""
 
 
 def get_ui_html() -> str:
