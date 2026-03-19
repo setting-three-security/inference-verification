@@ -47,9 +47,18 @@ if not FAUX_MODE:
 
 from openrouter import query_openrouter
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="Inference Verification API",
     description="Verifies LLM outputs for model weight exfiltration detection",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
