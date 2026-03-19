@@ -66,6 +66,7 @@ class QueryRequest(BaseModel):
     """Request body for /query endpoint (OpenRouter only)."""
     prompt: str = Field(description="User prompt to send to OpenRouter")
     max_tokens: int = Field(default=100, description="Max tokens to generate")
+    model: str = Field(default="meta-llama/llama-3.1-8b-instruct", description="OpenRouter model to query")
     temperature: float = Field(default=1.0)
     top_k: int = Field(default=50)
     top_p: float = Field(default=0.95)
@@ -86,7 +87,7 @@ class VerifyTextRequest(BaseModel):
     top_k: int = Field(default=50)
     top_p: float = Field(default=0.95)
     seed: int = Field(default=42)
-    gls_threshold: float = Field(default=-5.0)
+    gls_threshold: float = Field(default=-6.0)
     logit_rank_threshold: int = Field(default=10)
 
 
@@ -118,7 +119,7 @@ class VerifyResponse(BaseModel):
 
 DEFAULT_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
 DEFAULT_SEED = 42
-DEFAULT_GLS_THRESHOLD = -5.0
+DEFAULT_GLS_THRESHOLD = -6.0
 DEFAULT_LOGIT_RANK_THRESHOLD = 10
 
 
@@ -442,6 +443,7 @@ def query(req: QueryRequest):
     try:
         response_text = query_openrouter(
             req.prompt,
+            model=req.model,
             max_tokens=req.max_tokens,
             temperature=req.temperature,
             top_k=req.top_k,
