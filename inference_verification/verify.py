@@ -194,17 +194,16 @@ def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput]) -> lis
     - logit_rank: int - rank in raw logits (0 = highest)
     """
     print(f"Loading verification model: {cfg.model_name}")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     model = AutoModelForCausalLM.from_pretrained(
         cfg.model_name,
         torch_dtype=torch.bfloat16,
-        device_map="auto",
         low_cpu_mem_usage=True,
-    ).eval()
+    ).to(device).eval()
 
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
     tokenizer = set_tokenizer_pad_token(tokenizer, model, cfg.model_name)
 
-    device = model.device
     results = []
 
     print(f"Verifying {len(outputs)} outputs...")
