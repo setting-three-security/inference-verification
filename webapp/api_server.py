@@ -41,6 +41,7 @@ if not FAUX_MODE:
     from inference_verification.verify import (
         VerificationConfig,
         verify_outputs,
+        load_verification_model,
         classify_tokens,
     )
     from openrouter import MockRequestOutput, MockOutput
@@ -130,6 +131,17 @@ DEFAULT_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
 DEFAULT_SEED = 42
 DEFAULT_GLS_THRESHOLD = -6.0
 DEFAULT_LOGIT_RANK_THRESHOLD = 10
+
+
+# --- Load verification model once at startup ---
+
+VERIFY_MODEL = None
+VERIFY_TOKENIZER = None
+
+if not FAUX_MODE:
+    print("Loading verification model at startup...")
+    VERIFY_MODEL, VERIFY_TOKENIZER = load_verification_model(DEFAULT_MODEL)
+    print("Verification model loaded.")
 
 
 # --- Faux mode helpers ---
@@ -356,13 +368,12 @@ def verify(req: VerifyRequest):
 
     prompts = load_prompts(gen_cfg)
     outputs = generate_with_vllm(gen_cfg, prompts)
-    verification_results = verify_outputs(ver_cfg, outputs)
+    verification_results = verify_outputs(ver_cfg, outputs, model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
 
     gen_token_ids = _collect_gen_token_ids(outputs)
-    tokenizer = AutoTokenizer.from_pretrained(gen_cfg.model_name)
 
     return _build_verify_response(
-        ver_cfg, verification_results, gen_token_ids, tokenizer,
+        ver_cfg, verification_results, gen_token_ids, VERIFY_TOKENIZER,
         model_name=gen_cfg.model_name, seed=gen_cfg.seed, n_prompts=req.n_prompts,
     )
 
@@ -427,13 +438,12 @@ def verify_stream(req: VerifyRequest):
         yield _sse_event({"stage": "loading_model", "detail": "Loading verification model..."})
         yield _sse_event({"stage": "verifying", "detail": "Running verification..."})
 
-        verification_results = verify_outputs(ver_cfg, outputs)
+        verification_results = verify_outputs(ver_cfg, outputs, model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
 
         gen_token_ids = _collect_gen_token_ids(outputs)
-        tokenizer = AutoTokenizer.from_pretrained(gen_cfg.model_name)
 
         response = _build_verify_response(
-            ver_cfg, verification_results, gen_token_ids, tokenizer,
+            ver_cfg, verification_results, gen_token_ids, VERIFY_TOKENIZER,
             model_name=gen_cfg.model_name, seed=gen_cfg.seed, n_prompts=req.n_prompts,
         )
 
@@ -482,9 +492,8 @@ def verify_text(req: VerifyTextRequest):
             logit_rank_threshold=req.logit_rank_threshold,
         )
 
-    tokenizer = AutoTokenizer.from_pretrained(DEFAULT_MODEL)
-    prompt_token_ids = tokenizer.encode(req.prompt, add_special_tokens=True)
-    response_token_ids = tokenizer.encode(req.response_text, add_special_tokens=False)
+    prompt_token_ids = VERIFY_TOKENIZER.encode(req.prompt, add_special_tokens=True)
+    response_token_ids = VERIFY_TOKENIZER.encode(req.response_text, add_special_tokens=False)
 
     if not response_token_ids:
         raise HTTPException(status_code=400, detail="Response text tokenized to empty sequence")
@@ -504,10 +513,10 @@ def verify_text(req: VerifyTextRequest):
         logit_rank_threshold=req.logit_rank_threshold,
     )
 
-    verification_results = verify_outputs(ver_cfg, [mock_output])
+    verification_results = verify_outputs(ver_cfg, [mock_output], model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
 
     return _build_verify_response(
-        ver_cfg, verification_results, response_token_ids, tokenizer,
+        ver_cfg, verification_results, response_token_ids, VERIFY_TOKENIZER,
         model_name=DEFAULT_MODEL, seed=req.seed, n_prompts=1,
     )
 
@@ -536,9 +545,8 @@ def verify_text_stream(req: VerifyTextRequest):
       try:
         yield _sse_event({"stage": "loading_model", "detail": "Loading verification model..."})
 
-        tokenizer = AutoTokenizer.from_pretrained(DEFAULT_MODEL)
-        prompt_token_ids = tokenizer.encode(req.prompt, add_special_tokens=True)
-        response_token_ids = tokenizer.encode(req.response_text, add_special_tokens=False)
+        prompt_token_ids = VERIFY_TOKENIZER.encode(req.prompt, add_special_tokens=True)
+        response_token_ids = VERIFY_TOKENIZER.encode(req.response_text, add_special_tokens=False)
 
         if not response_token_ids:
             yield _sse_event({"stage": "error", "detail": "Response text tokenized to empty sequence"})
@@ -561,10 +569,10 @@ def verify_text_stream(req: VerifyTextRequest):
 
         yield _sse_event({"stage": "verifying", "detail": "Running verification..."})
 
-        verification_results = verify_outputs(ver_cfg, [mock_output])
+        verification_results = verify_outputs(ver_cfg, [mock_output], model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
 
         response = _build_verify_response(
-            ver_cfg, verification_results, response_token_ids, tokenizer,
+            ver_cfg, verification_results, response_token_ids, VERIFY_TOKENIZER,
             model_name=DEFAULT_MODEL, seed=req.seed, n_prompts=1,
         )
 

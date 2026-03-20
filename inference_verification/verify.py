@@ -185,7 +185,20 @@ def _as_list(x):
     return list(x)
 
 
-def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput]) -> list[dict]:
+def load_verification_model(model_name: str):
+    """Load model and tokenizer for verification. Call once at startup."""
+    print(f"Loading verification model: {model_name}")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype=torch.bfloat16,
+    ).to(device).eval()
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = set_tokenizer_pad_token(tokenizer, model, model_name)
+    return model, tokenizer
+
+
+def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput], model=None, tokenizer=None) -> list[dict]:
     """
     Verify generated outputs and compute GLS scores.
 
@@ -193,17 +206,10 @@ def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput]) -> lis
     - sampled_gumbel_scores: float - GLS score for sampled token
     - logit_rank: int - rank in raw logits (0 = highest)
     """
-    print(f"Loading verification model: {cfg.model_name}")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg.model_name,
-        torch_dtype=torch.bfloat16,
-        low_cpu_mem_usage=True,
-    ).to(device).eval()
+    if model is None or tokenizer is None:
+        model, tokenizer = load_verification_model(cfg.model_name)
 
-    tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
-    tokenizer = set_tokenizer_pad_token(tokenizer, model, cfg.model_name)
-
+    device = next(model.parameters()).device
     results = []
 
     print(f"Verifying {len(outputs)} outputs...")
@@ -275,16 +281,13 @@ def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput]) -> lis
             u = draw_u(seed, cgs_gen)
 
             result_dict = {
-                "sampled_gumbel_scores": claimed_token_score,
+                "sampled_gumbel_scores": max(claimed_token_score, -25.0),
                 "logit_rank": logit_rank,
             }
 
             results.append(result_dict)
             past_tokens.append(sampled_token)
 
-    del model
-    torch.cuda.empty_cache()
-    gc.collect()
 
     return results
 
