@@ -14,7 +14,7 @@ import openai
 
 
 KEY_PATH = Path(__file__).parent.parent / "SECRETS" / "openrouter__mats.key"
-DEFAULT_MODEL = "meta-llama/llama-3.1-8b-instruct"
+DEFAULT_MODEL = "qwen/qwen3-30b-a3b"
 
 
 def _read_key() -> str:

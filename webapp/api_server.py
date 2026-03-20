@@ -127,7 +127,7 @@ class VerifyResponse(BaseModel):
 
 # --- Default config ---
 
-DEFAULT_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+DEFAULT_MODEL = "Qwen/Qwen3-30B-A3B"
 DEFAULT_SEED = 42
 DEFAULT_GLS_THRESHOLD = -6.0
 DEFAULT_LOGIT_RANK_THRESHOLD = 10
