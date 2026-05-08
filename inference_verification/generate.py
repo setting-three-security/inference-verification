@@ -35,65 +35,13 @@ from inference_verification.manifest import (
 )
 
 
-# Repo-root-relative prompts directory: inference-verification/data/prompts/.
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "data" / "prompts"
-
-
-def resolve_prompts_path(prompts_file: str) -> Path:
-    """Resolve a prompts_file config value to an absolute path.
-
-    Absolute paths are used as-is; relative paths resolve under PROMPTS_DIR.
-    """
-    p = Path(prompts_file)
-    if p.is_absolute():
-        return p
-    return PROMPTS_DIR / p
-
-
-@dataclass
-class GenerationConfig:
-    """Configuration for text generation."""
-
-    # Model settings
-    model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
-
-    # Generation settings
-    n_prompts: int = 100
-    max_tokens: int = 100
-    temperature: float = 1.0
-    top_k: Optional[int] = 50
-    top_p: float = 0.95
-    seed: int = 42
-
-    # Prompts
-    prompts_file: str = "prompts.json"
-    max_ctx_len: int = 512
-
-    # Save settings
-    save_dir: str = "generated_outputs"
-
-    # vLLM settings
-    gpu_memory_utilization: float = 0.7
-    max_model_len: Optional[int] = None
-
-    @classmethod
-    def from_yaml(cls, yaml_path: str) -> "GenerationConfig":
-        """Load configuration from YAML file.
-
-        Accepts either a flat dict of fields or the legacy
-        ``{model: {...}, generation_params: {...}}`` layout.
-        """
-        with open(yaml_path, 'r') as f:
-            config_dict = yaml.safe_load(f)
-
-        if "model" in config_dict or "generation_params" in config_dict:
-            model_config = config_dict.get("model", {})
-            generation_config = config_dict.get("generation_params", {})
-            merged_config = {**model_config, **generation_config}
-        else:
-            merged_config = config_dict
-
-        return cls(**merged_config)
+# Re-export config types so existing imports (`from inference_verification.generate
+# import GenerationConfig`) keep working — including the webapp's import path.
+from inference_verification.config import (
+    PROMPTS_DIR,
+    GenerationConfig,
+    resolve_prompts_path,
+)
 
 
 def load_prompts(cfg: GenerationConfig) -> list[list[int]]:

@@ -39,7 +39,7 @@ echo "================================================================="
 mkdir -p "${LOCAL_PATH}"
 
 rsync -avz --partial --info=progress2 \
-  -e "ssh -p ${POD_SSH_PORT}" \
+  -e "ssh -q -o LogLevel=ERROR -p ${POD_SSH_PORT} ${POD_SSH_KEY_PATH:+-i ${POD_SSH_KEY_PATH}}" \
   "${POD_HOST}:${POD_PATH}" \
   "${LOCAL_PATH}"
 

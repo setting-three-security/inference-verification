@@ -31,6 +31,14 @@ echo "  REPO_ROOT: $REPO_ROOT"
 echo "  HF cache:  /workspace/hf-cache"
 echo "================================================================="
 
+# 0) System packages. RunPod PyTorch images don't ship rsync by default,
+# but sync_to_pod.sh / sync_from_pod.sh need it on both ends.
+echo "[0/3] Installing system packages (rsync)..."
+if command -v apt-get >/dev/null; then
+  apt-get update -qq
+  apt-get install -y --no-install-recommends rsync
+fi
+
 # 1) Install project and Linux-only extras.
 echo "[1/3] Installing project deps..."
 pip install --upgrade pip
@@ -54,11 +62,11 @@ fi
 # the user may be running only public models and not need HF auth.
 if [ -n "${HF_TOKEN:-}" ]; then
   echo "[3/3] Logging in to Hugging Face..."
-  huggingface-cli login --token "$HF_TOKEN" --add-to-git-credential || {
-    echo "  (huggingface-cli login failed; continuing — gated models will 401)"
+  hf auth login --token "$HF_TOKEN" || {
+    echo "  (hf auth login failed; continuing — gated models will 401)"
   }
 else
-  echo "[3/3] HF_TOKEN not set; skipping huggingface-cli login."
+  echo "[3/3] HF_TOKEN not set; skipping hf auth login."
   echo "  (Set HF_TOKEN as a RunPod template env var if you need gated models.)"
 fi
 

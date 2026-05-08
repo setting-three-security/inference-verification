@@ -37,6 +37,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from vllm import RequestOutput
 
+from inference_verification.config import VerificationConfig
 from inference_verification.manifest import (
     repo_root_from_module,
     utc_timestamp,
@@ -59,63 +60,6 @@ class TokenClassification(Enum):
     SAFE = "safe"
     SUSPICIOUS = "suspicious"
     DANGEROUS = "dangerous"
-
-
-@dataclass
-class VerificationConfig:
-    """Configuration for token verification and classification."""
-
-    # Model settings
-    model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
-
-    # Sampling parameters (must match generation)
-    temperature: float = 1.0
-    top_k: Optional[int] = 50
-    top_p: float = 0.95
-    seed: int = 42
-
-    # Verification settings
-    sigmas: list[float] = field(default_factory=lambda: [0.01, 1.0])
-    support_size: int = 500     # Top-N tokens (by unfiltered prob) scored per position
-    cgs_sigma: float = 0.01     # Gaussian std for CGS (currently unused)
-
-    # Classification settings (recorded in manifest; not used for control flow here)
-    classify: bool = False
-    gls_threshold: float = -5.0
-    logit_rank_threshold: int = 32
-
-    # Save settings
-    save_dir: str = "verification_results"
-
-    @classmethod
-    def from_yaml(cls, yaml_path: str) -> "VerificationConfig":
-        """Load config from YAML.
-
-        Accepts either a flat dict of fields or the legacy
-        ``{model: {...}, verification_params: {...}}`` layout.
-        """
-        with open(yaml_path) as f:
-            config_dict = yaml.safe_load(f)
-
-        if "model" in config_dict or "verification_params" in config_dict:
-            model_config = config_dict.get("model", {})
-            verification_config = config_dict.get("verification_params", {})
-            merged = {**model_config, **verification_config}
-        else:
-            merged = config_dict
-
-        # Backwards-compat: legacy `gumbel_sigma: float` → sigmas: [float].
-        if "gumbel_sigma" in merged and "sigmas" not in merged:
-            merged["sigmas"] = [merged.pop("gumbel_sigma")]
-        elif "gumbel_sigma" in merged:
-            merged.pop("gumbel_sigma")
-
-        # Drop fields not on the dataclass (e.g. n_prompts, prompts_file from a
-        # shared single-experiment YAML).
-        valid = {f for f in cls.__dataclass_fields__}
-        merged = {k: v for k, v in merged.items() if k in valid}
-
-        return cls(**merged)
 
 
 # ---------------------------------------------------------------------------

@@ -30,8 +30,11 @@ from typing import Any, Optional
 
 import yaml
 
-from inference_verification.generate import GenerationConfig, resolve_prompts_path
-from inference_verification.verify import VerificationConfig
+from inference_verification.config import (
+    GenerationConfig,
+    VerificationConfig,
+    resolve_prompts_path,
+)
 
 # Field name in the table → config attribute. The user-facing name "model" is
 # kept terse to match common ML config conventions; it maps to model_name on

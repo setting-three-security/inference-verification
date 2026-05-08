@@ -35,7 +35,7 @@ echo "Syncing $REPO_ROOT/  →  ${POD_HOST}:${POD_PATH}"
 echo "================================================================="
 
 rsync -avz --partial --info=progress2 \
-  -e "ssh -p ${POD_SSH_PORT}" \
+  -e "ssh -q -o LogLevel=ERROR -p ${POD_SSH_PORT} -i ${POD_SSH_KEY_PATH}" \
   --exclude '.git' \
   --exclude '__pycache__' \
   --exclude '.venv' \
