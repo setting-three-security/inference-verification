@@ -8,6 +8,7 @@ __pycache__/
 .env.*
 generated_outputs/
 gumbel_cgs_analysis_results/
+experiments/
 .claude/
 *.egg-info/
 dist/

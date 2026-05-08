@@ -1,5 +1,8 @@
 # Example configuration file for generate.py and verify.py
-# This file contains model parameters, generation settings, and verification/classification settings
+# This file contains model parameters, generation settings, and verification/classification settings.
+#
+# generate.py and verify.py both accept this layout (sections "model",
+# "generation_params", "verification_params") as well as a flat one-level dict.
 
 model:
   # Model identifier
@@ -16,20 +19,22 @@ generation_params:
   n_prompts: 100       # Number of prompts to generate
   max_tokens: 500      # Maximum tokens to generate per prompt
 
-  # Dataset settings
-  dataset_name: "lmsys/lmsys-chat-1m"  # Dataset for prompts
+  # Prompts: relative paths resolve under inference-verification/data/prompts/
+  prompts_file: "prompts.json"
   max_ctx_len: 512                     # Maximum context length for prompts
 
   # vLLM settings
   gpu_memory_utilization: 0.7  # GPU memory utilization (0.0-1.0)
+  max_model_len: 8192          # Max model sequence length (KV cache)
 
   # Output settings
   save_dir: "generated_outputs"  # Directory to save generated outputs
 
 verification_params:
   # Verification settings (for verify.py)
-  gumbel_sigma: 1.0  # Gaussian noise scale for GLS verification
-  cgs_sigma: 0.01    # Gaussian std for CGS (currently unused)
+  sigmas: [0.01, 1.0]   # Gaussian noise scales for GLS verification (one pkl per sigma)
+  support_size: 500     # Number of top tokens to score per position
+  cgs_sigma: 0.01       # Gaussian std for CGS (currently unused)
 
   # Classification settings
   classify: true              # Whether to run classification after verification

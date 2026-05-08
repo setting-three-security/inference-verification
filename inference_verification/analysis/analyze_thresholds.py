@@ -1,6 +1,7 @@
 # %%
 import os
 import pickle
+from pathlib import Path
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
@@ -13,13 +14,62 @@ from sklearn.metrics import classification_report, roc_curve, auc, confusion_mat
 from datetime import datetime
 
 
+def load_per_sigma_pkls(folder: str | Path) -> tuple[list[float], list[dict]]:
+    """Discover all_prompts__sigma=*.pkl files and merge into the legacy
+    sigma-keyed dict format expected by the rest of this script.
+
+    Returns ``(sigmas_sorted, data)`` where ``data[i]`` is a dict with:
+      - sampled_gumbel_scores: dict[sigma, float]
+      - top_k_gumbel_scores:   dict[sigma, np.ndarray]
+      - sampled_support_idx:   int
+      - logit_rank:            int
+    """
+    folder = Path(folder)
+    files = sorted(folder.glob("all_prompts__sigma=*.pkl"))
+    if not files:
+        # Backwards-compat: legacy single-file layout.
+        legacy = folder / "all_prompts.pkl"
+        if legacy.exists():
+            with open(legacy, "rb") as f:
+                legacy_data = pickle.load(f)
+            sigmas = sorted(legacy_data[0]["sampled_gumbel_scores"].keys())
+            return sigmas, legacy_data
+        raise FileNotFoundError(
+            f"No all_prompts__sigma=*.pkl (or legacy all_prompts.pkl) found in {folder}"
+        )
+
+    per_sigma: dict[float, list[dict]] = {}
+    for fp in files:
+        sigma_str = fp.stem.split("=", 1)[1]
+        sigma = float(sigma_str)
+        with open(fp, "rb") as f:
+            per_sigma[sigma] = pickle.load(f)
+
+    lengths = {len(v) for v in per_sigma.values()}
+    if len(lengths) != 1:
+        raise ValueError(f"Per-sigma files have differing lengths: {lengths}")
+    n = lengths.pop()
+    sigmas = sorted(per_sigma.keys())
+
+    merged: list[dict] = []
+    for i in range(n):
+        first = per_sigma[sigmas[0]][i]
+        merged.append({
+            "sampled_gumbel_scores": {s: per_sigma[s][i]["sampled_gumbel_scores"] for s in sigmas},
+            "top_k_gumbel_scores":   {s: per_sigma[s][i]["top_k_gumbel_scores"]   for s in sigmas},
+            "sampled_support_idx":   first["sampled_support_idx"],
+            "logit_rank":            first["logit_rank"],
+        })
+    return sigmas, merged
+
+
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Analyze Gumbel thresholds from experiment results")
 parser.add_argument(
     "--folder",
     type=str,
     required=True,
-    help="Path to results folder (e.g., gumbel_cgs_analysis_results/20251014_174336)",
+    help="Path to verify-stage folder containing all_prompts__sigma=*.pkl files",
 )
 parser.add_argument(
     "--max-thresholds",
@@ -44,7 +94,13 @@ folder = args.folder
 max_thresholds = args.max_thresholds
 skip_lr = args.skip_logistic_regression
 sigma_filter = args.sigma
-filename = f"{folder}/all_prompts.pkl"
+
+# Per-row outputs all live under <folder>/analysis/ (spec §3, §7.1).
+analysis_dir = Path(folder) / "analysis"
+analysis_dir.mkdir(parents=True, exist_ok=True)
+images_dir_path = analysis_dir / "images"
+images_dir_path.mkdir(parents=True, exist_ok=True)
+images_dir = str(images_dir_path)
 
 # Create datestring for plot filenames
 datestring = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -72,7 +128,8 @@ def save_plot(filepath_without_ext, dpi=150, bbox_inches='tight'):
     plt.savefig(f"{filepath_without_ext}.png", dpi=dpi, bbox_inches=bbox_inches)
     plt.savefig(f"{filepath_without_ext}.pdf", dpi=dpi, bbox_inches=bbox_inches)
 
-data = pickle.load(open(filename, "rb"))
+_loaded_sigmas, data = load_per_sigma_pkls(folder)
+print(f"Loaded {len(data)} tokens, sigmas in data: {_loaded_sigmas}")
 # %%
 print(data[0].keys())
 
@@ -123,9 +180,7 @@ plt.close()
 # %%
 
 
-images_dir = f"{folder}/images"
-os.makedirs(images_dir, exist_ok=True)
-
+# images_dir already initialized at <folder>/analysis/images/ above.
 sigmas = list(sampled_gumbel_scores[0].keys())
 
 # Filter to specific sigma if requested
@@ -231,7 +286,7 @@ mean_bits_by_sigma = mean_bits_by_sigma_with_fp
 print("\n  ✓ FPR vs Bit Rate computation complete")
 
 # Save the computed FPR vs Bit Rate data
-fpr_bitrate_output = f"{folder}/fpr_vs_bitrate.pkl"
+fpr_bitrate_output = str(analysis_dir / "fpr_vs_bitrate.pkl")
 with open(fpr_bitrate_output, 'wb') as f:
     pickle.dump(mean_bits_by_sigma, f)
 print(f"  ✓ Saved FPR vs Bit Rate data to {fpr_bitrate_output}")
@@ -512,7 +567,7 @@ if not skip_lr:
     # %%
     # Save trained classifiers
     print("\nSaving trained classifiers...")
-    classifier_output_path = f"{folder}/trained_classifiers.pkl"
+    classifier_output_path = str(analysis_dir / "trained_classifiers.pkl")
     with open(classifier_output_path, 'wb') as f:
         pickle.dump(classifier_results, f)
     

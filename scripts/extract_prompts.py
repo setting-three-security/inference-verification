@@ -2,7 +2,7 @@
 One-time script: extract prompts from lmsys/lmsys-chat-1m and save locally.
 
 Randomly samples 10k conversations whose tokenized form fits within 512 tokens.
-Saves raw conversation objects (before tokenization) to inference_verification/data/prompts.json.
+Saves raw conversation objects (before tokenization) to data/prompts/prompts.json.
 
 Usage:
     pip install datasets transformers
@@ -21,7 +21,7 @@ MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
 MAX_CTX_LEN = 512
 N_PROMPTS = 10_000
 SEED = 42
-OUTPUT_PATH = Path(__file__).parent.parent / "inference_verification" / "data" / "prompts.json"
+OUTPUT_PATH = Path(__file__).resolve().parent.parent / "data" / "prompts" / "prompts.json"
 
 
 def main():
