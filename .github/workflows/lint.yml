@@ -30,7 +30,7 @@ jobs:
           args: "check --no-fix --output-format=github ."
 
       - name: Ruff format check
-        if: always()
+        if: ${{ !cancelled() }}
         uses: astral-sh/ruff-action@v3
         with:
           version: "0.15.12"
