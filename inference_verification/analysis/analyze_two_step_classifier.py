@@ -18,16 +18,15 @@ Generates two ROC curves:
 2. (Good + Suspicious) (negative) vs Dangerous (positive)
 """
 
+import argparse
 import os
 import pickle
+from datetime import datetime
+
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
-import argparse
-from sklearn.metrics import roc_curve, auc
-from datetime import datetime
 from transformers import AutoTokenizer
-
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Two-step classifier analysis (good/suspicious/dangerous)")

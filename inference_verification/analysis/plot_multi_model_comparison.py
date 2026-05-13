@@ -5,9 +5,10 @@ Plot FPR vs Bit Rate comparison across multiple models.
 
 import argparse
 import pickle
-import matplotlib.pyplot as plt
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 
 
 def load_fpr_bitrate_data(results_dir):

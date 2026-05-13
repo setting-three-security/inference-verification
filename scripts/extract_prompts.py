@@ -14,8 +14,8 @@ import random
 from pathlib import Path
 
 from datasets import load_dataset
-from transformers import AutoTokenizer
 from tqdm import tqdm
+from transformers import AutoTokenizer
 
 MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
 MAX_CTX_LEN = 512

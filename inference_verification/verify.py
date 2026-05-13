@@ -14,26 +14,21 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import torch
-from vllm import RequestOutput
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from tqdm import tqdm
-from typing import Optional
 import pickle
-from dataclasses import dataclass, field
-import gc
-import numpy as np
-from datetime import datetime
+from dataclasses import dataclass
 from enum import Enum
+
+import torch
 import yaml
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from vllm import RequestOutput
 
 # Import GLS and CGS scoring functions from scoring_functions module
 from inference_verification.scoring_functions import (
     compute_gumbel_likelihood_score,
-    compute_gumbel_likelihood_score_batch,
-    compute_convolved_gaussian_score,
-    get_seed,
     draw_u,
+    get_seed,
 )
 
 EPSILON = 1e-12
@@ -55,7 +50,7 @@ class VerificationConfig:
 
     # Sampling parameters (must match generation)
     temperature: float = 1.0
-    top_k: Optional[int] = 50
+    top_k: int | None = 50
     top_p: float = 0.95
     seed: int = 42
 
@@ -74,7 +69,7 @@ class VerificationConfig:
     @classmethod
     def from_yaml(cls, yaml_path: str) -> "VerificationConfig":
         """Load configuration from YAML file."""
-        with open(yaml_path, 'r') as f:
+        with open(yaml_path) as f:
             config_dict = yaml.safe_load(f)
 
         # Extract model and verification_params sections
@@ -105,8 +100,8 @@ def apply_top_k_only(logits: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
 
 def apply_top_k_top_p(
     logits: torch.Tensor,
-    k: Optional[torch.Tensor],
-    p: Optional[torch.Tensor],
+    k: torch.Tensor | None,
+    p: torch.Tensor | None,
 ) -> torch.Tensor:
     """Apply top-k and top-p masks to logits (from vLLM)."""
     if p is None:
@@ -467,7 +462,7 @@ def main():
         num_suspicious = classification_results["num_suspicious"]
         num_dangerous = classification_results["num_dangerous"]
 
-        print(f"\nResults:")
+        print("\nResults:")
         print(f"  Total tokens: {total_tokens}")
         print(f"  Safe tokens: {num_safe} ({num_safe / total_tokens * 100:.2f}%)")
         print(f"  Suspicious tokens: {num_suspicious} ({num_suspicious / total_tokens * 100:.2f}%)")

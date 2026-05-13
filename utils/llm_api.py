@@ -3,10 +3,10 @@
 import os
 import time
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-import json
-from .api_cost_tracker import log_api_spending
+
 import anthropic
+
+from .api_cost_tracker import log_api_spending
 
 openai_models = [
     "gpt-5-2025-08-07"
@@ -50,7 +50,7 @@ def _load_api_key(filename: str) -> str:
             f"Please create {filename} in the SECRETS/ directory "
             f"with your API key.")
 
-    with open(key_path, 'r') as f:
+    with open(key_path) as f:
         key = f.read().strip()
 
     if not key:
@@ -81,7 +81,7 @@ def get_openrouter_key() -> str:
     return _load_api_key("openrouter__mats.key")
 
 
-def check_api_keys() -> Dict[str, bool]:
+def check_api_keys() -> dict[str, bool]:
     """Check if API keys are available and valid."""
     secrets_dir = _get_secrets_dir()
     results = {}
@@ -92,7 +92,7 @@ def check_api_keys() -> Dict[str, bool]:
         key_path = secrets_dir / filename
         if key_path.exists():
             try:
-                with open(key_path, 'r') as f:
+                with open(key_path) as f:
                     key = f.read().strip()
                 results[provider] = bool(key)
             except Exception:
@@ -108,9 +108,9 @@ def anthropic_completion(
         model: str = "claude-3-5-sonnet-20241022",
         max_tokens: int = 1024,
         temperature: float = 1.0,
-        seed: Optional[int] = None,  # Kept for compatibility but ignored
-        system: Optional[str] = None,
-        prefill: Optional[str] = None,
+        seed: int | None = None,  # Kept for compatibility but ignored
+        system: str | None = None,
+        prefill: str | None = None,
         **kwargs) -> str:
     """Call Anthropic API for text completion.
     
@@ -190,11 +190,11 @@ def anthropic_continue(
     model: str,
     max_tokens: int = 128,
     temperature: float = 0.7,
-    seed: Optional[int] = None,
-    stop_sequences: Optional[List[str]] = None,
-    prefill_assistant: Optional[str] = None,
-    system: Optional[str] = None,
-    api_key: Optional[str] = None,
+    seed: int | None = None,
+    stop_sequences: list[str] | None = None,
+    prefill_assistant: str | None = None,
+    system: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """
     Continue text for up to `max_tokens` using Anthropic Messages API.
@@ -251,12 +251,12 @@ def openai_completion(prompt: str,
                       model: str = "gpt-4o-mini",
                       max_tokens: int = 1024,
                       temperature: float = 1.0,
-                      seed: Optional[int] = None,
-                      system: Optional[str] = None,
+                      seed: int | None = None,
+                      system: str | None = None,
                       **kwargs) -> str:
     """Call OpenAI API for text completion."""
+
     from openai import OpenAI
-    import time
 
     api_key = get_openai_key()
     client = OpenAI(api_key=api_key)
@@ -304,10 +304,10 @@ def openrouter_completion(
         model: str = "openai/gpt-oss-120b",
         max_tokens: int = 1024,
         temperature: float = 1.0,
-        seed: Optional[int] = None,
-        system: Optional[str] = None,
-        site_url: Optional[str] = None,
-        site_name: Optional[str] = None,
+        seed: int | None = None,
+        system: str | None = None,
+        site_url: str | None = None,
+        site_name: str | None = None,
         **kwargs) -> str:
     """Call OpenRouter API for text completion.
 
@@ -387,13 +387,13 @@ def openrouter_completion(
 
 
 def openrouter_messages(
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         model: str = "openai/gpt-oss-120b",
         max_tokens: int = 1024,
         temperature: float = 1.0,
-        seed: Optional[int] = None,
-        site_url: Optional[str] = None,
-        site_name: Optional[str] = None,
+        seed: int | None = None,
+        site_url: str | None = None,
+        site_name: str | None = None,
         **kwargs) -> str:
     """Call OpenRouter API with message format.
 
@@ -466,13 +466,13 @@ def openrouter_messages(
 
 
 def anthropic_messages(
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         model: str = "claude-3-5-sonnet-20241022",
         max_tokens: int = 1024,
         temperature: float = 1.0,
-        seed: Optional[int] = None,  # Kept for compatibility but ignored
-        system: Optional[str] = None,
-        prefill: Optional[str] = None,
+        seed: int | None = None,  # Kept for compatibility but ignored
+        system: str | None = None,
+        prefill: str | None = None,
         **kwargs) -> str:
     """Call Anthropic API with message format.
     
@@ -532,11 +532,11 @@ def anthropic_messages(
         return response.content[0].text
 
 
-def openai_messages(messages: List[Dict[str, str]],
+def openai_messages(messages: list[dict[str, str]],
                     model: str = "gpt-4o-mini",
                     max_tokens: int = 1024,
                     temperature: float = 1.0,
-                    seed: Optional[int] = None,
+                    seed: int | None = None,
                     **kwargs) -> str:
     """Call OpenAI API with message format."""
     from openai import OpenAI
@@ -590,7 +590,7 @@ def anthropic_stream(prompt: str,
                      model: str = "claude-3-5-sonnet-20241022",
                      max_tokens: int = 1024,
                      temperature: float = 1.0,
-                     system: Optional[str] = None,
+                     system: str | None = None,
                      **kwargs):
     """Stream responses from Anthropic API."""
     import anthropic
@@ -620,8 +620,8 @@ def openai_stream(prompt: str,
                   model: str = "gpt-4o-mini",
                   max_tokens: int = 1024,
                   temperature: float = 1.0,
-                  seed: Optional[int] = None,
-                  system: Optional[str] = None,
+                  seed: int | None = None,
+                  system: str | None = None,
                   **kwargs):
     """Stream responses from OpenAI API."""
     from openai import OpenAI
@@ -661,10 +661,10 @@ def openai_stream(prompt: str,
 
 def anthropic_batch_submit_and_wait(
     client: anthropic.Anthropic,
-    requests: List[Dict],
+    requests: list[dict],
     description: str = "batch",
     poll_interval: int = 5,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Submit batch requests and wait for completion with spend tracking.
 
     Args:
@@ -677,6 +677,7 @@ def anthropic_batch_submit_and_wait(
         Dict mapping custom_id -> response text
     """
     import time
+
     from .api_cost_tracker import log_batch_spending
 
     if not requests:
@@ -713,7 +714,7 @@ def anthropic_batch_submit_and_wait(
     return results
 
 
-def get_available_models(provider: str = "all") -> Dict[str, List[str]]:
+def get_available_models(provider: str = "all") -> dict[str, list[str]]:
     """Return available models for each provider."""
     models = {
         "anthropic": [

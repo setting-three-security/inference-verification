@@ -9,8 +9,8 @@ The key idea: If we assume true logits have Gaussian noise around the observed l
 we can compute P(competitor beats claimed token | observed logits, noise model).
 """
 
+
 import torch
-from typing import Optional
 
 EPSILON = 1e-12
 
@@ -102,8 +102,8 @@ def compute_gumbel_likelihood_score_batch(
     logits_V: torch.Tensor,
     exponential_noise_V: torch.Tensor,
     temperature: float,
-    top_k: Optional[torch.Tensor],
-    top_p: Optional[torch.Tensor],
+    top_k: torch.Tensor | None,
+    top_p: torch.Tensor | None,
     gold_idx_list: list[int] | torch.Tensor,
     noise_sigma: float,
     apply_top_k_top_p_fn,

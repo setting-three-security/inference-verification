@@ -14,18 +14,17 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import json
-import torch
-import vllm
-from vllm import LLM, SamplingParams, RequestOutput
-from transformers import AutoTokenizer
-from tqdm import tqdm
-from typing import Optional
-import pickle
-from dataclasses import dataclass, field
 import gc
+import json
+import pickle
+from dataclasses import dataclass
 from datetime import datetime
+
+import torch
 import yaml
+from tqdm import tqdm
+from transformers import AutoTokenizer
+from vllm import LLM, RequestOutput, SamplingParams
 
 
 @dataclass
@@ -39,7 +38,7 @@ class GenerationConfig:
     n_prompts: int = 100
     max_tokens: int = 100
     temperature: float = 1.0
-    top_k: Optional[int] = 50
+    top_k: int | None = 50
     top_p: float = 0.95
     seed: int = 42
 
@@ -56,7 +55,7 @@ class GenerationConfig:
     @classmethod
     def from_yaml(cls, yaml_path: str) -> "GenerationConfig":
         """Load configuration from YAML file."""
-        with open(yaml_path, 'r') as f:
+        with open(yaml_path) as f:
             config_dict = yaml.safe_load(f)
 
         # Extract model and generation_params sections
@@ -102,7 +101,7 @@ def load_prompts(cfg: GenerationConfig) -> list[list[int]]:
     return tokenized_prompts
 
 
-def generate_with_vllm(cfg: GenerationConfig, prompts: list[list[int]], max_model_len: Optional[int] = None) -> list[RequestOutput]:
+def generate_with_vllm(cfg: GenerationConfig, prompts: list[list[int]], max_model_len: int | None = None) -> list[RequestOutput]:
     """Generate sequences using vLLM with Gumbel-max sampling."""
     print(f"Loading vLLM model: {cfg.model_name}")
     llm_kwargs = {

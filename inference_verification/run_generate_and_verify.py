@@ -15,26 +15,23 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 # Add parent directory to path to import inference_verification module
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import gc
+import pickle
+from dataclasses import dataclass, field
+from datetime import datetime
+
 import torch
-import vllm
-from vllm import LLM, SamplingParams, RequestOutput
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
 from tqdm import tqdm
-from typing import Optional
-import pickle
-from dataclasses import asdict, dataclass, field
-import gc
-import numpy as np
-from datetime import datetime
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from vllm import LLM, RequestOutput, SamplingParams
 
 # Import GLS and CGS scoring functions from inference_verification.scoring_functions module
 from inference_verification.scoring_functions import (
     compute_gumbel_likelihood_score,
     compute_gumbel_likelihood_score_batch,
-    compute_convolved_gaussian_score,
-    get_seed,
     draw_u,
+    get_seed,
 )
 
 EPSILON = 1e-12
@@ -49,7 +46,7 @@ class GumbelCGSAnalysisConfig:
     n_prompts: int = 100
     max_tokens: int = 100
     temperature: float = 1.0
-    top_k: Optional[int] = 50
+    top_k: int | None = 50
     top_p: float = 0.95
     seed: int = 42
 
@@ -114,8 +111,8 @@ def apply_top_k_only(
 
 def apply_top_k_top_p(
     logits: torch.Tensor,
-    k: Optional[torch.Tensor],
-    p: Optional[torch.Tensor],
+    k: torch.Tensor | None,
+    p: torch.Tensor | None,
 ) -> torch.Tensor:
     """Apply top-k and top-p masks to the logits.
 
@@ -266,7 +263,7 @@ def load_prompts(cfg: GumbelCGSAnalysisConfig) -> list[list[int]]:
     return tokenized_prompts
 
 
-def generate_with_vllm(cfg: GumbelCGSAnalysisConfig, prompts: list[list[int]], max_model_len: Optional[int] = None) -> list[RequestOutput]:
+def generate_with_vllm(cfg: GumbelCGSAnalysisConfig, prompts: list[list[int]], max_model_len: int | None = None) -> list[RequestOutput]:
     """Generate sequences using vLLM."""
     print(f"Loading vLLM model: {cfg.model_name}")
     llm_kwargs = {
@@ -447,7 +444,7 @@ def verify_and_save(cfg: GumbelCGSAnalysisConfig, outputs: list[RequestOutput]) 
             # Update past tokens for next iteration
             past_tokens.append(sampled_token)
 
-    save_path = save_dir / f"all_prompts.pkl"
+    save_path = save_dir / "all_prompts.pkl"
     with open(save_path, "wb") as f:
         pickle.dump(results, f)
 

@@ -7,11 +7,10 @@ SECRETS/openrouter__mats.key file.
 """
 
 import os
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import openai
-
 
 KEY_PATH = Path(__file__).parent.parent / "SECRETS" / "openrouter__mats.key"
 DEFAULT_MODEL = "meta-llama/llama-3.1-8b-instruct"

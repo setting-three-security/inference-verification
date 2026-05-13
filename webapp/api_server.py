@@ -5,13 +5,12 @@ Provides endpoints for TEE-based generation, verification, and classification
 of LLM outputs using Gumbel Likelihood Scores (GLS).
 """
 
-import os
-import sys
 import json
 import math
-import time
+import os
 import random
-import pickle
+import sys
+import time
 from pathlib import Path
 
 FAUX_MODE = os.environ.get("FAUX_MODE", "").lower() in ("1", "true", "yes")
@@ -22,33 +21,31 @@ if not FAUX_MODE:
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Optional
-
 from ui import get_ui_html
 
 if not FAUX_MODE:
     import torch
-    from transformers import AutoTokenizer
+    from openrouter import MockOutput, MockRequestOutput
+
     from inference_verification.generate import (
         GenerationConfig,
-        load_prompts,
         generate_with_vllm,
+        load_prompts,
     )
     from inference_verification.verify import (
         VerificationConfig,
-        verify_outputs,
-        load_verification_model,
         classify_tokens,
+        load_verification_model,
+        verify_outputs,
     )
-    from openrouter import MockRequestOutput, MockOutput
-
-from openrouter import query_openrouter
 
 from fastapi.middleware.cors import CORSMiddleware
+from openrouter import query_openrouter
 
 app = FastAPI(
     title="Inference Verification API",
@@ -69,7 +66,7 @@ class VerifyRequest(BaseModel):
     """Request body for /verify endpoint."""
     n_prompts: int = Field(default=10, description="Number of prompts to sample from dataset")
     max_tokens: int = Field(default=100, description="Max tokens to generate per prompt")
-    config: Optional[dict] = Field(default=None, description="Override generation/verification config")
+    config: dict | None = Field(default=None, description="Override generation/verification config")
 
 
 class QueryRequest(BaseModel):
@@ -102,7 +99,7 @@ class VerifyTextRequest(BaseModel):
 
 
 class TokenResult(BaseModel):
-    gls_score: Optional[float] = None
+    gls_score: float | None = None
     logit_rank: int
     classification: str
     token_text: str = ""

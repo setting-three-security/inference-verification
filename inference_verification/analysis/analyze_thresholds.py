@@ -1,17 +1,16 @@
 # %%
+import argparse
 import os
 import pickle
-import matplotlib.pyplot as plt
-import torch
-import numpy as np
-from tqdm import tqdm
-import argparse
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import classification_report, roc_curve, auc, confusion_matrix
 from datetime import datetime
 
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import auc, classification_report, confusion_matrix, roc_curve
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from tqdm import tqdm
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Analyze Gumbel thresholds from experiment results")
@@ -304,7 +303,7 @@ if not skip_lr:
         features_list = []
         labels_list = []
     
-        print(f"  Extracting features...")
+        print("  Extracting features...")
         for result in tqdm(data, desc=f"  Extracting features (sigma={sigma})"):
             sampled_score = normalize_score(result["sampled_gumbel_scores"][sigma])
             top_k_scores = result["top_k_gumbel_scores"][sigma]
@@ -363,9 +362,9 @@ if not skip_lr:
     
         # Confusion matrix
         cm = confusion_matrix(y_test, y_pred)
-        print(f"Confusion Matrix:")
-        print(f"                 Predicted")
-        print(f"               Negative  Positive")
+        print("Confusion Matrix:")
+        print("                 Predicted")
+        print("               Negative  Positive")
         print(f"Actual Negative  {cm[0,0]:6d}  {cm[0,1]:6d}")
         print(f"       Positive  {cm[1,0]:6d}  {cm[1,1]:6d}")
     
