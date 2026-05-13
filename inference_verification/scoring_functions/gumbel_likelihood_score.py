@@ -9,13 +9,14 @@ The key idea: If we assume true logits have Gaussian noise around the observed l
 we can compute P(competitor beats claimed token | observed logits, noise model).
 """
 
-
 import torch
 
 EPSILON = 1e-12
 
 
-def exponential_to_gumbel(exponential_noise: torch.Tensor, epsilon: float = EPSILON) -> torch.Tensor:
+def exponential_to_gumbel(
+    exponential_noise: torch.Tensor, epsilon: float = EPSILON
+) -> torch.Tensor:
     """Convert exponential noise E ~ Exp(1) to Gumbel noise G = -log(E).
 
     Args:

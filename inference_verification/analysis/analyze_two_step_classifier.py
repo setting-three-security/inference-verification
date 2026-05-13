@@ -29,7 +29,9 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 # Parse command-line arguments
-parser = argparse.ArgumentParser(description="Two-step classifier analysis (good/suspicious/dangerous)")
+parser = argparse.ArgumentParser(
+    description="Two-step classifier analysis (good/suspicious/dangerous)"
+)
 parser.add_argument(
     "--folder",
     type=str,
@@ -76,16 +78,16 @@ def get_vocab_size_from_path(folder_path):
     """Extract model name from folder path and get vocab size from tokenizer."""
     # Try to extract model name from path
     # Expected format: .../meta-llama_Llama-3.2-3B-Instruct/...
-    parts = folder_path.split('/')
+    parts = folder_path.split("/")
     model_folder = None
 
     for part in parts:
-        if '_' in part and any(x in part.lower() for x in ['llama', 'qwen', 'mistral', 'mixtral']):
+        if "_" in part and any(x in part.lower() for x in ["llama", "qwen", "mistral", "mixtral"]):
             # Convert folder name back to model name (replace _ with /)
             # Find the first underscore which separates org from model
-            first_underscore = part.find('_')
+            first_underscore = part.find("_")
             if first_underscore > 0:
-                model_name = part[:first_underscore] + '/' + part[first_underscore+1:]
+                model_name = part[:first_underscore] + "/" + part[first_underscore + 1 :]
                 model_folder = model_name
                 break
 
@@ -124,7 +126,7 @@ def normalize_score(score: float, min_score: int = -20) -> float:
     return score
 
 
-def save_plot(filepath_without_ext, dpi=150, bbox_inches='tight'):
+def save_plot(filepath_without_ext, dpi=150, bbox_inches="tight"):
     """Save plot as both PNG and PDF."""
     plt.savefig(f"{filepath_without_ext}.png", dpi=dpi, bbox_inches=bbox_inches)
     plt.savefig(f"{filepath_without_ext}.pdf", dpi=dpi, bbox_inches=bbox_inches)
@@ -161,13 +163,13 @@ rank_thresholds = [None, 1, 4, 16, 30]
 # TWO-STEP CLASSIFIER: GLS Threshold + Rank Check
 # ============================================================================
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("TWO-STEP CLASSIFIER ANALYSIS")
 print(f"Vocabulary size: {vocab_size}")
 print(f"Testing logit rank thresholds: {rank_thresholds}")
 print(f"Max suspicious tokens allowed: {max_suspicious_pct}%")
 print("Using logit_rank (raw logit ranks before temp/top-k/top-p)")
-print("="*80)
+print("=" * 80)
 
 # Store results for each rank threshold
 results_by_rank_threshold = {}
@@ -176,7 +178,9 @@ for rank_threshold in rank_thresholds:
     print(f"\n--- Processing rank_threshold={rank_threshold} ---")
 
     # Extract normalized scores for sigma=1.0
-    sampled_scores = np.array([normalize_score(score[sigma]) * -1 for score in sampled_gumbel_scores])
+    sampled_scores = np.array(
+        [normalize_score(score[sigma]) * -1 for score in sampled_gumbel_scores]
+    )
 
     # Use pre-computed logit ranks
     sampled_ranks = np.array(logit_ranks)
@@ -188,7 +192,7 @@ for rank_threshold in rank_thresholds:
     # Subsample thresholds if needed
     if len(unique_thresholds) > max_thresholds:
         print(f"  Subsampling to {max_thresholds} thresholds")
-        indices = np.linspace(0, len(unique_thresholds)-1, max_thresholds, dtype=int)
+        indices = np.linspace(0, len(unique_thresholds) - 1, max_thresholds, dtype=int)
         unique_thresholds = unique_thresholds[indices]
 
     # Store results for this rank threshold
@@ -264,28 +268,30 @@ for rank_threshold in rank_thresholds:
         exfiltrable_info_values.append(mean_bits_percent)
 
     results_by_rank_threshold[rank_threshold] = {
-        'fpr': fpr_values,
-        'exfiltrable_info': exfiltrable_info_values,
+        "fpr": fpr_values,
+        "exfiltrable_info": exfiltrable_info_values,
     }
 
     print(f"  ✓ Completed rank_threshold={rank_threshold}")
-    print(f"     Kept {len(fpr_values)} thresholds, skipped {num_skipped} (>{max_suspicious_pct}% suspicious)")
+    print(
+        f"     Kept {len(fpr_values)} thresholds, skipped {num_skipped} (>{max_suspicious_pct}% suspicious)"
+    )
 
 # ============================================================================
 # PLOTTING
 # ============================================================================
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("CREATING PLOT")
-print("="*80)
+print("=" * 80)
 
 # Single plot: FPR of dangerous tokens vs Exfiltrable Information for different rank thresholds
 print("\nCreating FPR vs Exfiltrable Information plot...")
 plt.figure(figsize=(12, 8))
 
 for rank_threshold in rank_thresholds:
-    fpr_values = results_by_rank_threshold[rank_threshold]['fpr']
-    bits_values = results_by_rank_threshold[rank_threshold]['exfiltrable_info']
+    fpr_values = results_by_rank_threshold[rank_threshold]["fpr"]
+    bits_values = results_by_rank_threshold[rank_threshold]["exfiltrable_info"]
 
     label = f"rank={rank_threshold}" if rank_threshold is not None else "rank=None (no suspicious)"
     plt.plot(fpr_values, bits_values, marker="o", markersize=3, label=label)
@@ -294,9 +300,9 @@ plt.xlabel("FPR (%) - Dangerous tokens", fontsize=18)
 plt.ylabel("Exfiltrable Information (%)", fontsize=18)
 plt.xscale("log")
 plt.yscale("log")
-plt.title(f"FPR vs Exfiltrable Information (sigma={sigma})", fontsize=18, fontweight='bold')
-plt.tick_params(axis='both', which='major', labelsize=14)
-plt.legend(fontsize=12, loc='best')
+plt.title(f"FPR vs Exfiltrable Information (sigma={sigma})", fontsize=18, fontweight="bold")
+plt.tick_params(axis="both", which="major", labelsize=14)
+plt.legend(fontsize=12, loc="best")
 plt.grid(True, alpha=0.3)
 save_plot(f"{images_dir}/fpr_vs_exfiltrable_info_sigma{sigma}_{datestring}")
 plt.close()
@@ -305,16 +311,16 @@ print("  ✓ Saved FPR vs Exfiltrable Information plot")
 # Save results
 print("\nSaving results...")
 output_path = f"{folder}/two_step_classifier_results.pkl"
-with open(output_path, 'wb') as f:
+with open(output_path, "wb") as f:
     pickle.dump(results_by_rank_threshold, f)
 print(f"  ✓ Saved results to: {output_path}")
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("TWO-STEP CLASSIFIER ANALYSIS COMPLETE!")
-print("="*80)
+print("=" * 80)
 print(f"Results saved to: {folder}")
 print(f"  - Plot: {images_dir}/fpr_vs_exfiltrable_info_sigma{sigma}_{datestring}.png/.pdf")
 print(f"  - Results data: {output_path}")
 print(f"  - Sigma used: {sigma}")
 print(f"  - Rank thresholds tested: {rank_thresholds}")
-print("="*80)
+print("=" * 80)

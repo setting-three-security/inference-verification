@@ -36,6 +36,7 @@ EPSILON = 1e-12
 
 class TokenClassification(Enum):
     """Token classification categories."""
+
     SAFE = "safe"
     SUSPICIOUS = "suspicious"
     DANGEROUS = "dangerous"
@@ -144,7 +145,9 @@ def keep_one_token(scores: torch.Tensor, tok_idx: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def get_probs(logits: torch.Tensor, temperature: float, top_k: torch.Tensor, top_p: torch.Tensor) -> torch.Tensor:
+def get_probs(
+    logits: torch.Tensor, temperature: float, top_k: torch.Tensor, top_p: torch.Tensor
+) -> torch.Tensor:
     """Compute probabilities from logits with temperature and top-k/top-p."""
     assert len(logits.shape) == 2
 
@@ -163,7 +166,9 @@ def set_tokenizer_pad_token(tokenizer, model, model_name):
     """Set pad token if not already set."""
     if not tokenizer.pad_token and "llama" in model_name.lower():
         tokenizer.pad_token_id = (
-            model.config.eos_token_id[0] if isinstance(model.config.eos_token_id, list) else model.config.eos_token_id
+            model.config.eos_token_id[0]
+            if isinstance(model.config.eos_token_id, list)
+            else model.config.eos_token_id
         )
     elif not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
@@ -184,16 +189,22 @@ def load_verification_model(model_name: str):
     """Load model and tokenizer for verification. Call once at startup."""
     print(f"Loading verification model: {model_name}")
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.bfloat16,
-    ).to(device).eval()
+    model = (
+        AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.bfloat16,
+        )
+        .to(device)
+        .eval()
+    )
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer = set_tokenizer_pad_token(tokenizer, model, model_name)
     return model, tokenizer
 
 
-def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput], model=None, tokenizer=None) -> list[dict]:
+def verify_outputs(
+    cfg: VerificationConfig, outputs: list[RequestOutput], model=None, tokenizer=None
+) -> list[dict]:
     """
     Verify generated outputs and compute GLS scores.
 
@@ -229,7 +240,9 @@ def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput], model=
             unfiltered_logits_LV = logits_LV / max(cfg.temperature, 1e-10)
         else:
             unfiltered_logits_LV = logits_LV
-        unfiltered_probs_LV = torch.nn.functional.softmax(unfiltered_logits_LV, dim=-1, dtype=torch.float32)
+        unfiltered_probs_LV = torch.nn.functional.softmax(
+            unfiltered_logits_LV, dim=-1, dtype=torch.float32
+        )
 
         # Initialize RNGs
         gumbel_gen = torch.Generator(device=device)
@@ -255,7 +268,9 @@ def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput], model=
             cdf_V = probs_V.cumsum(dim=-1)
             cdf_V[-1] = 1.0
 
-            top_k_tensor = torch.tensor([cfg.top_k], device=device) if cfg.top_k is not None else None
+            top_k_tensor = (
+                torch.tensor([cfg.top_k], device=device) if cfg.top_k is not None else None
+            )
             top_p_tensor = torch.tensor([cfg.top_p], device=device)
 
             # Compute GLS score for sampled token
@@ -283,7 +298,6 @@ def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput], model=
             results.append(result_dict)
             past_tokens.append(sampled_token)
 
-
     return results
 
 
@@ -293,7 +307,7 @@ def save_verification_results(results: list[dict], save_dir: str) -> str:
     save_path.mkdir(parents=True, exist_ok=True)
 
     output_file = save_path / "all_prompts.pkl"
-    with open(output_file, 'wb') as f:
+    with open(output_file, "wb") as f:
         pickle.dump(results, f)
 
     print(f"Saved verification results to {output_file}")
@@ -366,18 +380,33 @@ def main():
     parser.add_argument("--config", type=str, default=None, help="Path to YAML config file")
 
     # Optional overrides (only used if --config is not provided)
-    parser.add_argument("--model", type=str, default=None, help="Model name (must match generation)")
-    parser.add_argument("--temperature", type=float, default=None, help="Temperature (must match generation)")
+    parser.add_argument(
+        "--model", type=str, default=None, help="Model name (must match generation)"
+    )
+    parser.add_argument(
+        "--temperature", type=float, default=None, help="Temperature (must match generation)"
+    )
     parser.add_argument("--top-k", type=int, default=None, help="Top-k (must match generation)")
     parser.add_argument("--top-p", type=float, default=None, help="Top-p (must match generation)")
     parser.add_argument("--seed", type=int, default=None, help="Seed (must match generation)")
-    parser.add_argument("--gumbel-sigma", type=float, default=None, help="Gaussian noise scale for GLS")
+    parser.add_argument(
+        "--gumbel-sigma", type=float, default=None, help="Gaussian noise scale for GLS"
+    )
     parser.add_argument("--save-dir", type=str, default=None, help="Output directory")
 
     # Classification arguments
-    parser.add_argument("--classify", action="store_true", help="Run classification after verification")
-    parser.add_argument("--gls-threshold", type=float, default=None, help="GLS threshold for classification")
-    parser.add_argument("--logit-rank-threshold", type=int, default=None, help="Logit rank threshold for classification")
+    parser.add_argument(
+        "--classify", action="store_true", help="Run classification after verification"
+    )
+    parser.add_argument(
+        "--gls-threshold", type=float, default=None, help="GLS threshold for classification"
+    )
+    parser.add_argument(
+        "--logit-rank-threshold",
+        type=int,
+        default=None,
+        help="Logit rank threshold for classification",
+    )
 
     args = parser.parse_args()
 
@@ -430,7 +459,7 @@ def main():
 
     # Load generated outputs
     print(f"\nLoading generated outputs from {args.input}...")
-    with open(args.input, 'rb') as f:
+    with open(args.input, "rb") as f:
         outputs = pickle.load(f)
     print(f"Loaded {len(outputs)} generated outputs")
 

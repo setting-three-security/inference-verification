@@ -85,8 +85,12 @@ def load_prompts(cfg: GenerationConfig) -> list[list[int]]:
         if len(tokenized_prompts) >= cfg.n_prompts:
             break
         try:
-            rendered_prompt = tokenizer.apply_chat_template(raw_prompt, tokenize=False, add_generation_prompt=True)
-            tokenized_prompt = tokenizer.encode(rendered_prompt, add_special_tokens=False, return_tensors=None)
+            rendered_prompt = tokenizer.apply_chat_template(
+                raw_prompt, tokenize=False, add_generation_prompt=True
+            )
+            tokenized_prompt = tokenizer.encode(
+                rendered_prompt, add_special_tokens=False, return_tensors=None
+            )
 
             if len(tokenized_prompt) <= cfg.max_ctx_len:
                 if tuple(tokenized_prompt) not in unique_prompts:
@@ -101,7 +105,9 @@ def load_prompts(cfg: GenerationConfig) -> list[list[int]]:
     return tokenized_prompts
 
 
-def generate_with_vllm(cfg: GenerationConfig, prompts: list[list[int]], max_model_len: int | None = None) -> list[RequestOutput]:
+def generate_with_vllm(
+    cfg: GenerationConfig, prompts: list[list[int]], max_model_len: int | None = None
+) -> list[RequestOutput]:
     """Generate sequences using vLLM with Gumbel-max sampling."""
     print(f"Loading vLLM model: {cfg.model_name}")
     llm_kwargs = {
@@ -141,7 +147,7 @@ def save_outputs(outputs: list[RequestOutput], save_dir: str) -> str:
     save_path.mkdir(parents=True, exist_ok=True)
 
     output_file = save_path / "generated_outputs.pkl"
-    with open(output_file, 'wb') as f:
+    with open(output_file, "wb") as f:
         pickle.dump(outputs, f)
 
     print(f"Saved {len(outputs)} generated outputs to {output_file}")
@@ -163,7 +169,9 @@ def main():
     parser.add_argument("--top-k", type=int, default=None, help="Top-k sampling")
     parser.add_argument("--top-p", type=float, default=None, help="Top-p (nucleus) sampling")
     parser.add_argument("--seed", type=int, default=None, help="Random seed")
-    parser.add_argument("--gpu-memory-utilization", type=float, default=None, help="GPU memory utilization")
+    parser.add_argument(
+        "--gpu-memory-utilization", type=float, default=None, help="GPU memory utilization"
+    )
     parser.add_argument("--max-model-len", type=int, default=None, help="Max model sequence length")
     parser.add_argument("--save-dir", type=str, default=None, help="Output directory")
     args = parser.parse_args()

@@ -37,10 +37,19 @@ class TestVerifyResponse:
     def test_verify_response_structure(self, verify_response):
         data = verify_response
         expected_keys = {
-            "model_name", "seed", "n_prompts", "total_tokens",
-            "num_safe", "num_suspicious", "num_dangerous",
-            "safe_pct", "suspicious_pct", "dangerous_pct",
-            "gls_threshold", "logit_rank_threshold", "tokens",
+            "model_name",
+            "seed",
+            "n_prompts",
+            "total_tokens",
+            "num_safe",
+            "num_suspicious",
+            "num_dangerous",
+            "safe_pct",
+            "suspicious_pct",
+            "dangerous_pct",
+            "gls_threshold",
+            "logit_rank_threshold",
+            "tokens",
         }
         assert expected_keys <= set(data.keys())
         assert data["n_prompts"] == 1

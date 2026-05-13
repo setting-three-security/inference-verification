@@ -41,10 +41,7 @@ def draw_u(seed: int, generator: torch.Generator) -> torch.Tensor:
 
 
 def compute_convolved_gaussian_score(
-    cdf_V: torch.Tensor,
-    u: torch.Tensor,
-    sigma: float,
-    epsilon: float = EPSILON
+    cdf_V: torch.Tensor, u: torch.Tensor, sigma: float, epsilon: float = EPSILON
 ) -> torch.Tensor:
     """
     Compute CGS (Convolved Gaussian Score) for every token in vocabulary.

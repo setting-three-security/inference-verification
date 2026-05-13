@@ -65,11 +65,13 @@ def query_openrouter(
 @dataclass
 class MockOutput:
     """Mimics the shape that verify_outputs expects from a single output entry."""
+
     token_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
 class MockRequestOutput:
     """Mimics vLLM RequestOutput with prompt_token_ids and outputs[0].token_ids."""
+
     prompt_token_ids: list[int] = field(default_factory=list)
     outputs: list[MockOutput] = field(default_factory=list)
