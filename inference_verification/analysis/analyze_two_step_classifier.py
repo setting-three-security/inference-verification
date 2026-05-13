@@ -20,6 +20,7 @@ Generates two ROC curves:
 
 import os
 import pickle
+from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
@@ -29,13 +30,55 @@ from datetime import datetime
 from transformers import AutoTokenizer
 
 
+def load_per_sigma_pkls(folder: str | Path) -> tuple[list[float], list[dict]]:
+    """Discover all_prompts__sigma=*.pkl files and merge into the legacy
+    sigma-keyed dict format. See analyze_thresholds.py for full doc.
+    """
+    folder = Path(folder)
+    files = sorted(folder.glob("all_prompts__sigma=*.pkl"))
+    if not files:
+        legacy = folder / "all_prompts.pkl"
+        if legacy.exists():
+            with open(legacy, "rb") as f:
+                legacy_data = pickle.load(f)
+            sigmas = sorted(legacy_data[0]["sampled_gumbel_scores"].keys())
+            return sigmas, legacy_data
+        raise FileNotFoundError(
+            f"No all_prompts__sigma=*.pkl (or legacy all_prompts.pkl) found in {folder}"
+        )
+
+    per_sigma: dict[float, list[dict]] = {}
+    for fp in files:
+        sigma_str = fp.stem.split("=", 1)[1]
+        sigma = float(sigma_str)
+        with open(fp, "rb") as f:
+            per_sigma[sigma] = pickle.load(f)
+
+    lengths = {len(v) for v in per_sigma.values()}
+    if len(lengths) != 1:
+        raise ValueError(f"Per-sigma files have differing lengths: {lengths}")
+    n = lengths.pop()
+    sigmas = sorted(per_sigma.keys())
+
+    merged: list[dict] = []
+    for i in range(n):
+        first = per_sigma[sigmas[0]][i]
+        merged.append({
+            "sampled_gumbel_scores": {s: per_sigma[s][i]["sampled_gumbel_scores"] for s in sigmas},
+            "top_k_gumbel_scores":   {s: per_sigma[s][i]["top_k_gumbel_scores"]   for s in sigmas},
+            "sampled_support_idx":   first["sampled_support_idx"],
+            "logit_rank":            first["logit_rank"],
+        })
+    return sigmas, merged
+
+
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Two-step classifier analysis (good/suspicious/dangerous)")
 parser.add_argument(
     "--folder",
     type=str,
     required=True,
-    help="Path to results folder (e.g., gumbel_cgs_analysis_results/20251014_174336)",
+    help="Path to verify-stage folder containing all_prompts__sigma=*.pkl files",
 )
 parser.add_argument(
     "--max-thresholds",
@@ -61,12 +104,23 @@ parser.add_argument(
     default=0.5,
     help="Maximum percentage of suspicious tokens allowed (default: 0.5)",
 )
+parser.add_argument(
+    "--sigma",
+    type=float,
+    default=None,
+    help="Sigma to use (default: 1.0 if present, else the largest sigma in the data)",
+)
 args = parser.parse_args()
 
 folder = args.folder
 max_thresholds = args.max_thresholds
 max_suspicious_pct = args.max_suspicious_pct
-filename = f"{folder}/all_prompts.pkl"
+
+# Per-row outputs all live under <folder>/analysis/.
+analysis_dir = Path(folder) / "analysis"
+analysis_dir.mkdir(parents=True, exist_ok=True)
+images_dir_path = analysis_dir / "images"
+images_dir_path.mkdir(parents=True, exist_ok=True)
 
 # Create datestring for plot filenames
 datestring = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -131,10 +185,10 @@ def save_plot(filepath_without_ext, dpi=150, bbox_inches='tight'):
     plt.savefig(f"{filepath_without_ext}.pdf", dpi=dpi, bbox_inches=bbox_inches)
 
 
-# Load data
+# Load data (per-sigma pkls, merged back into the legacy sigma-keyed format).
 print("Loading data...")
-data = pickle.load(open(filename, "rb"))
-print(f"Loaded {len(data)} prompts")
+_loaded_sigmas, data = load_per_sigma_pkls(folder)
+print(f"Loaded {len(data)} prompts; sigmas in data: {_loaded_sigmas}")
 
 # Extract scores and ranks
 sampled_gumbel_scores = []
@@ -146,11 +200,19 @@ for result in tqdm(data, desc="Extracting scores"):
     top_k_gumbel_scores.append(result["top_k_gumbel_scores"])
     logit_ranks.append(result["logit_rank"])
 
-images_dir = f"{folder}/images"
-os.makedirs(images_dir, exist_ok=True)
+images_dir = str(images_dir_path)
 
-# Use only sigma=1.0
-sigma = 1.0
+# Pick a sigma. CLI > 1.0 > largest available.
+if args.sigma is not None:
+    if args.sigma not in _loaded_sigmas:
+        raise SystemExit(
+            f"Requested --sigma {args.sigma} not found in data. Available: {_loaded_sigmas}"
+        )
+    sigma = args.sigma
+elif 1.0 in _loaded_sigmas:
+    sigma = 1.0
+else:
+    sigma = max(_loaded_sigmas)
 print(f"Using sigma: {sigma}")
 
 # Define rank thresholds to test
@@ -305,7 +367,7 @@ print("  ✓ Saved FPR vs Exfiltrable Information plot")
 
 # Save results
 print("\nSaving results...")
-output_path = f"{folder}/two_step_classifier_results.pkl"
+output_path = str(analysis_dir / "two_step_classifier_results.pkl")
 with open(output_path, 'wb') as f:
     pickle.dump(results_by_rank_threshold, f)
 print(f"  ✓ Saved results to: {output_path}")

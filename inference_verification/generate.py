@@ -15,6 +15,7 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import json
+import time
 import torch
 import vllm
 from vllm import LLM, SamplingParams, RequestOutput
@@ -27,54 +28,27 @@ import gc
 from datetime import datetime
 import yaml
 
+from inference_verification.manifest import (
+    repo_root_from_module,
+    utc_timestamp,
+    write_generation_manifest,
+)
 
-@dataclass
-class GenerationConfig:
-    """Configuration for text generation."""
 
-    # Model settings
-    model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
-
-    # Generation settings
-    n_prompts: int = 100
-    max_tokens: int = 100
-    temperature: float = 1.0
-    top_k: Optional[int] = 50
-    top_p: float = 0.95
-    seed: int = 42
-
-    # Dataset
-    dataset_name: str = "lmsys/lmsys-chat-1m"
-    max_ctx_len: int = 512
-
-    # Save settings
-    save_dir: str = "generated_outputs"
-
-    # vLLM settings
-    gpu_memory_utilization: float = 0.7
-
-    @classmethod
-    def from_yaml(cls, yaml_path: str) -> "GenerationConfig":
-        """Load configuration from YAML file."""
-        with open(yaml_path, 'r') as f:
-            config_dict = yaml.safe_load(f)
-
-        # Extract model and generation_params sections
-        model_config = config_dict.get("model", {})
-        generation_config = config_dict.get("generation_params", {})
-
-        # Merge both sections
-        merged_config = {**model_config, **generation_config}
-
-        # Create config object
-        return cls(**merged_config)
+# Re-export config types so existing imports (`from inference_verification.generate
+# import GenerationConfig`) keep working — including the webapp's import path.
+from inference_verification.config import (
+    PROMPTS_DIR,
+    GenerationConfig,
+    resolve_prompts_path,
+)
 
 
 def load_prompts(cfg: GenerationConfig) -> list[list[int]]:
-    """Load and tokenize prompts from bundled local file."""
+    """Load and tokenize prompts from cfg.prompts_file."""
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
 
-    prompts_path = Path(__file__).parent / "data" / "prompts.json"
+    prompts_path = resolve_prompts_path(cfg.prompts_file)
     with open(prompts_path) as f:
         conversations = json.load(f)
 
@@ -102,7 +76,7 @@ def load_prompts(cfg: GenerationConfig) -> list[list[int]]:
     return tokenized_prompts
 
 
-def generate_with_vllm(cfg: GenerationConfig, prompts: list[list[int]], max_model_len: Optional[int] = None) -> list[RequestOutput]:
+def generate_with_vllm(cfg: GenerationConfig, prompts: list[list[int]]) -> list[RequestOutput]:
     """Generate sequences using vLLM with Gumbel-max sampling."""
     print(f"Loading vLLM model: {cfg.model_name}")
     llm_kwargs = {
@@ -111,8 +85,8 @@ def generate_with_vllm(cfg: GenerationConfig, prompts: list[list[int]], max_mode
         "enforce_eager": True,
         "gpu_memory_utilization": cfg.gpu_memory_utilization,
     }
-    if max_model_len is not None:
-        llm_kwargs["max_model_len"] = max_model_len
+    if cfg.max_model_len is not None:
+        llm_kwargs["max_model_len"] = cfg.max_model_len
 
     model = LLM(**llm_kwargs)
 
@@ -166,7 +140,13 @@ def main():
     parser.add_argument("--seed", type=int, default=None, help="Random seed")
     parser.add_argument("--gpu-memory-utilization", type=float, default=None, help="GPU memory utilization")
     parser.add_argument("--max-model-len", type=int, default=None, help="Max model sequence length")
+    parser.add_argument("--prompts-file", type=str, default=None,
+                        help="Path to prompts JSON (relative paths resolve under data/prompts/)")
     parser.add_argument("--save-dir", type=str, default=None, help="Output directory")
+    parser.add_argument("--row-name", type=str, default=None,
+                        help="Experiments-table row name (recorded in manifest; set by run_experiments.py)")
+    parser.add_argument("--notes", type=str, default=None,
+                        help="Free-text notes recorded in the manifest")
     args = parser.parse_args()
 
     # Load config from YAML or use defaults
@@ -194,8 +174,11 @@ def main():
         if args.gpu_memory_utilization is not None:
             cfg.gpu_memory_utilization = args.gpu_memory_utilization
 
-    # max_model_len is always a CLI argument (not in config)
-    max_model_len = args.max_model_len
+    # CLI overrides that apply to either path
+    if args.max_model_len is not None:
+        cfg.max_model_len = args.max_model_len
+    if args.prompts_file is not None:
+        cfg.prompts_file = args.prompts_file
 
     # Save dir override (applies whether using YAML or CLI args)
     if args.save_dir is not None:
@@ -209,25 +192,44 @@ def main():
     print("TEXT GENERATION WITH vLLM")
     print("=" * 80)
     print(f"Model: {cfg.model_name}")
+    print(f"Prompts file: {cfg.prompts_file}")
     print(f"Prompts: {cfg.n_prompts}")
     print(f"Max tokens: {cfg.max_tokens}")
     print(f"Temperature: {cfg.temperature}")
     print(f"Top-k: {cfg.top_k}")
     print(f"Top-p: {cfg.top_p}")
     print(f"Seed: {cfg.seed}")
+    print(f"Max model len: {cfg.max_model_len}")
     print(f"Save dir: {cfg.save_dir}")
     print("=" * 80)
 
     # Load prompts
+    started_at = utc_timestamp()
+    started_at_perf = time.time()
     prompts = load_prompts(cfg)
     print(f"Loaded {len(prompts)} prompts")
 
     # Generate
-    outputs = generate_with_vllm(cfg, prompts, max_model_len)
+    outputs = generate_with_vllm(cfg, prompts)
     print(f"Generated {len(outputs)} outputs")
 
     # Save
     output_file = save_outputs(outputs, cfg.save_dir)
+
+    # Manifest
+    duration = time.time() - started_at_perf
+    write_generation_manifest(
+        out_dir=cfg.save_dir,
+        repo_root=repo_root_from_module(),
+        row_name=args.row_name,
+        notes=args.notes,
+        cfg=cfg,
+        prompts_source_path=resolve_prompts_path(cfg.prompts_file),
+        n_prompts_used=len(prompts),
+        started_at=started_at,
+        duration_seconds=duration,
+        exit_code=0,
+    )
 
     print("\nDone! Generated outputs saved to:", output_file)
 

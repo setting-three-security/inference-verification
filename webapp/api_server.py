@@ -357,6 +357,7 @@ def verify(req: VerifyRequest):
     )
 
     ver_cfg = VerificationConfig(
+        sigmas=[1.0],
         model_name=gen_cfg.model_name,
         temperature=gen_cfg.temperature,
         top_k=gen_cfg.top_k,
@@ -368,7 +369,7 @@ def verify(req: VerifyRequest):
 
     prompts = load_prompts(gen_cfg)
     outputs = generate_with_vllm(gen_cfg, prompts)
-    verification_results = verify_outputs(ver_cfg, outputs, model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
+    verification_results = verify_outputs(ver_cfg, outputs, model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)[ver_cfg.sigmas[0]]
 
     gen_token_ids = _collect_gen_token_ids(outputs)
 
@@ -421,6 +422,7 @@ def verify_stream(req: VerifyRequest):
         )
 
         ver_cfg = VerificationConfig(
+            sigmas=[1.0],
             model_name=gen_cfg.model_name,
             temperature=gen_cfg.temperature,
             top_k=gen_cfg.top_k,
@@ -438,7 +440,7 @@ def verify_stream(req: VerifyRequest):
         yield _sse_event({"stage": "loading_model", "detail": "Loading verification model..."})
         yield _sse_event({"stage": "verifying", "detail": "Running verification..."})
 
-        verification_results = verify_outputs(ver_cfg, outputs, model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
+        verification_results = verify_outputs(ver_cfg, outputs, model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)[ver_cfg.sigmas[0]]
 
         gen_token_ids = _collect_gen_token_ids(outputs)
 
@@ -504,6 +506,7 @@ def verify_text(req: VerifyTextRequest):
     )
 
     ver_cfg = VerificationConfig(
+        sigmas=[1.0],
         model_name=DEFAULT_MODEL,
         temperature=req.temperature,
         top_k=req.top_k,
@@ -513,7 +516,7 @@ def verify_text(req: VerifyTextRequest):
         logit_rank_threshold=req.logit_rank_threshold,
     )
 
-    verification_results = verify_outputs(ver_cfg, [mock_output], model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
+    verification_results = verify_outputs(ver_cfg, [mock_output], model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)[ver_cfg.sigmas[0]]
 
     return _build_verify_response(
         ver_cfg, verification_results, response_token_ids, VERIFY_TOKENIZER,
@@ -558,6 +561,7 @@ def verify_text_stream(req: VerifyTextRequest):
         )
 
         ver_cfg = VerificationConfig(
+            sigmas=[1.0],
             model_name=DEFAULT_MODEL,
             temperature=req.temperature,
             top_k=req.top_k,
@@ -569,7 +573,7 @@ def verify_text_stream(req: VerifyTextRequest):
 
         yield _sse_event({"stage": "verifying", "detail": "Running verification..."})
 
-        verification_results = verify_outputs(ver_cfg, [mock_output], model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
+        verification_results = verify_outputs(ver_cfg, [mock_output], model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)[ver_cfg.sigmas[0]]
 
         response = _build_verify_response(
             ver_cfg, verification_results, response_token_ids, VERIFY_TOKENIZER,
