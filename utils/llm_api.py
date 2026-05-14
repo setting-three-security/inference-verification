@@ -210,7 +210,8 @@ def anthropic_continue(
 
     Two modes:
       - Plain continuation:   anthropic_continue_text("...your text...")
-      - Prefill continuation: anthropic_continue_text("USER TEXT", prefill_assistant="ASSISTANT: partial...")
+      - Prefill continuation:
+            anthropic_continue_text("USER TEXT", prefill_assistant="ASSISTANT: partial...")
 
     Returns the concatenated text blocks from Claude's reply.
     """
@@ -242,9 +243,11 @@ def anthropic_continue(
         error_msg = str(e).lower()
         # Check for rate limit errors
         if "rate" in error_msg and "limit" in error_msg:
-            raise Exception(f"RATE_LIMIT_ERROR: Anthropic API rate limit hit. Error: {e}")
+            raise Exception(f"RATE_LIMIT_ERROR: Anthropic API rate limit hit. Error: {e}") from e
         elif "429" in error_msg or "too many requests" in error_msg:
-            raise Exception(f"RATE_LIMIT_ERROR: Anthropic API rate limit hit (429). Error: {e}")
+            raise Exception(
+                f"RATE_LIMIT_ERROR: Anthropic API rate limit hit (429). Error: {e}"
+            ) from e
         else:
             raise  # Re-raise the original exception if not rate limit
 
@@ -373,9 +376,11 @@ def openrouter_completion(
     except Exception as e:
         error_msg = str(e).lower()
         if "rate" in error_msg and "limit" in error_msg:
-            raise Exception(f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit. Error: {e}")
+            raise Exception(f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit. Error: {e}") from e
         elif "429" in error_msg or "too many requests" in error_msg:
-            raise Exception(f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit (429). Error: {e}")
+            raise Exception(
+                f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit (429). Error: {e}"
+            ) from e
         else:
             print(f"[OpenRouter API] Error with model {model}: {e}")
             raise
@@ -451,9 +456,11 @@ def openrouter_messages(
     except Exception as e:
         error_msg = str(e).lower()
         if "rate" in error_msg and "limit" in error_msg:
-            raise Exception(f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit. Error: {e}")
+            raise Exception(f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit. Error: {e}") from e
         elif "429" in error_msg or "too many requests" in error_msg:
-            raise Exception(f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit (429). Error: {e}")
+            raise Exception(
+                f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit (429). Error: {e}"
+            ) from e
         else:
             raise
 
@@ -576,20 +583,21 @@ def openai_messages(
         error_msg = str(e).lower()
         # Check for rate limit errors
         if "rate" in error_msg and "limit" in error_msg:
-            raise Exception(f"RATE_LIMIT_ERROR: OpenAI API rate limit hit. Error: {e}")
+            raise Exception(f"RATE_LIMIT_ERROR: OpenAI API rate limit hit. Error: {e}") from e
         elif "429" in error_msg or "too many requests" in error_msg:
-            raise Exception(f"RATE_LIMIT_ERROR: OpenAI API rate limit hit (429). Error: {e}")
+            raise Exception(f"RATE_LIMIT_ERROR: OpenAI API rate limit hit (429). Error: {e}") from e
         else:
             raise  # Re-raise the original exception if not rate limit
 
     # Track spending
     if hasattr(response, "usage"):
+        prompt_text = " ".join([m.get("content", "") for m in messages])
         log_api_spending(
             provider="openai",
             model=model,
             input_tokens=response.usage.prompt_tokens,
             output_tokens=response.usage.completion_tokens,
-            prompt=prompt,
+            prompt=prompt_text[:1000],
             response=response.choices[0].message.content,
         )
 
@@ -624,8 +632,7 @@ def anthropic_stream(
         stream_params["system"] = system
 
     with client.messages.stream(**stream_params) as stream:
-        for text in stream.text_stream:
-            yield text
+        yield from stream.text_stream
 
 
 def openai_stream(

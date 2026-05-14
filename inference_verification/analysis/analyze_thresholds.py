@@ -75,7 +75,8 @@ def save_plot(filepath_without_ext, dpi=150, bbox_inches="tight"):
     plt.savefig(f"{filepath_without_ext}.pdf", dpi=dpi, bbox_inches=bbox_inches)
 
 
-data = pickle.load(open(filename, "rb"))
+with open(filename, "rb") as f:
+    data = pickle.load(f)
 # %%
 print(data[0].keys())
 
@@ -197,7 +198,7 @@ for sigma in sigmas:
 
     max_possible = np.log2(np.array(VOCAB_SIZE))
 
-    for i, threshold in enumerate(tqdm(unique_thresholds, desc=f"  Thresholds for sigma={sigma}")):
+    for _i, threshold in enumerate(tqdm(unique_thresholds, desc=f"  Thresholds for sigma={sigma}")):
         # FPR: % of sampled tokens that fail verification
         fpr = (sampled_scores >= threshold).sum() / len(sampled_scores)
         fpr *= 100
@@ -322,7 +323,7 @@ if not skip_lr:
             labels_list.append(1)
 
             # Negative examples: all other tokens in top-K
-            for i, score in enumerate(top_k_scores):
+            for _i, score in enumerate(top_k_scores):
                 score = normalize_score(score.item())
                 # Compute rank for this token
                 rank = (top_k_scores > score).sum().item()
@@ -335,9 +336,9 @@ if not skip_lr:
 
         print(f"Total samples: {len(labels):,}")
         print(f"  Positive (sampled): {np.sum(labels):,} ({100 * np.mean(labels):.2f}%)")
-        print(
-            f"  Negative (other): {len(labels) - np.sum(labels):,} ({100 * (1 - np.mean(labels)):.2f}%)"
-        )
+        neg_count = len(labels) - np.sum(labels)
+        neg_pct = 100 * (1 - np.mean(labels))
+        print(f"  Negative (other): {neg_count:,} ({neg_pct:.2f}%)")
 
         # Train/test split
         X_train, X_test, y_train, y_test = train_test_split(
@@ -540,11 +541,12 @@ if not skip_lr:
 
     print(f"\n{'=' * 80}")
     print(f"Trained classifiers saved to: {classifier_output_path}")
-    print(f"ROC curves saved to: {images_dir}/logistic_regression_roc_curves_{datestring}.png/.pdf")
-    print(f"GLS vs LR comparison saved to: {images_dir}/gls_vs_lr_comparison_{datestring}.png/.pdf")
-    print(
-        f"FP adjusted plot saved to: {images_dir}/mean_bits_vs_fpr_fp_adjusted_{datestring}.png/.pdf"
-    )
+    roc_path = f"{images_dir}/logistic_regression_roc_curves_{datestring}.png/.pdf"
+    gls_lr_path = f"{images_dir}/gls_vs_lr_comparison_{datestring}.png/.pdf"
+    fp_adj_path = f"{images_dir}/mean_bits_vs_fpr_fp_adjusted_{datestring}.png/.pdf"
+    print(f"ROC curves saved to: {roc_path}")
+    print(f"GLS vs LR comparison saved to: {gls_lr_path}")
+    print(f"FP adjusted plot saved to: {fp_adj_path}")
     print(f"{'=' * 80}")
 # %%
 
@@ -623,7 +625,10 @@ plt.ylabel("Bit Rate (%)", fontsize=18)
 plt.xscale("log")
 plt.yscale("log")
 plt.title(
-    f"Mean Bit Rate (%) vs FPR for Different Sigma Values\nBest Possible at FP bit rate {fp_bit_rate:.4f}: {best_possible:.4f} %",
+    (
+        "Mean Bit Rate (%) vs FPR for Different Sigma Values\n"
+        f"Best Possible at FP bit rate {fp_bit_rate:.4f}: {best_possible:.4f} %"
+    ),
     fontsize=18,
     fontweight="bold",
 )

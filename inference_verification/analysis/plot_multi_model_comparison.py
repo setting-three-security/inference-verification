@@ -24,8 +24,10 @@ def load_fpr_bitrate_data(results_dir):
     return mean_bits_by_sigma
 
 
-def plot_multi_model_comparison(sweep_dir, sigmas=[0.01, 0.05]):
+def plot_multi_model_comparison(sweep_dir, sigmas=None):
     """Create comparison plots for all models in sweep directory."""
+    if sigmas is None:
+        sigmas = [0.01, 0.05]
     sweep_dir = Path(sweep_dir)
 
     # Find all model directories
