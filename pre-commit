@@ -1,13 +1,28 @@
 #!/bin/bash
+# Format + lint staged Python files with ruff, then re-stage so the
+# applied fixes land in the commit.
+#
+# Mirror of the CI workflow (.github/workflows/lint.yml): same ruff
+# version pin, same `check --no-fix` + `format --check` invocations,
+# but here we apply (not just check) so the commit is clean.
 
-FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$')
+set -euo pipefail
+
+FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
 
 if [ -z "$FILES" ]; then
     exit 0
 fi
 
+RUFF_PIN="ruff==0.15.12"
+
+# Format and lint-fix in-place, then re-stage.
+# shellcheck disable=SC2086  # word splitting is intentional here
+uvx --from "$RUFF_PIN" ruff format $FILES
+# shellcheck disable=SC2086
+uvx --from "$RUFF_PIN" ruff check --fix $FILES
+
 for file in $FILES; do
-    yapf -i "$file"
     git add "$file"
 done
 
