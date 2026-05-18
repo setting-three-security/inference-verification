@@ -5,13 +5,12 @@ Provides endpoints for TEE-based generation, verification, and classification
 of LLM outputs using Gumbel Likelihood Scores (GLS).
 """
 
-import os
-import sys
 import json
 import math
-import time
+import os
 import random
-import pickle
+import sys
+import time
 from pathlib import Path
 
 FAUX_MODE = os.environ.get("FAUX_MODE", "").lower() in ("1", "true", "yes")
@@ -22,33 +21,31 @@ if not FAUX_MODE:
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Optional
-
 from ui import get_ui_html
 
 if not FAUX_MODE:
     import torch
-    from transformers import AutoTokenizer
+    from openrouter import MockOutput, MockRequestOutput
+
     from inference_verification.generate import (
         GenerationConfig,
-        load_prompts,
         generate_with_vllm,
+        load_prompts,
     )
     from inference_verification.verify import (
         VerificationConfig,
-        verify_outputs,
-        load_verification_model,
         classify_tokens,
+        load_verification_model,
+        verify_outputs,
     )
-    from openrouter import MockRequestOutput, MockOutput
-
-from openrouter import query_openrouter
 
 from fastapi.middleware.cors import CORSMiddleware
+from openrouter import query_openrouter
 
 app = FastAPI(
     title="Inference Verification API",
@@ -65,18 +62,23 @@ app.add_middleware(
 
 # --- Request / Response models ---
 
+
 class VerifyRequest(BaseModel):
     """Request body for /verify endpoint."""
+
     n_prompts: int = Field(default=10, description="Number of prompts to sample from dataset")
     max_tokens: int = Field(default=100, description="Max tokens to generate per prompt")
-    config: Optional[dict] = Field(default=None, description="Override generation/verification config")
+    config: dict | None = Field(default=None, description="Override generation/verification config")
 
 
 class QueryRequest(BaseModel):
     """Request body for /query endpoint (OpenRouter only)."""
+
     prompt: str = Field(description="User prompt to send to OpenRouter")
     max_tokens: int = Field(default=100, description="Max tokens to generate")
-    model: str = Field(default="meta-llama/llama-3.1-8b-instruct", description="OpenRouter model to query")
+    model: str = Field(
+        default="meta-llama/llama-3.1-8b-instruct", description="OpenRouter model to query"
+    )
     temperature: float = Field(default=1.0)
     top_k: int = Field(default=50)
     top_p: float = Field(default=0.95)
@@ -85,12 +87,14 @@ class QueryRequest(BaseModel):
 
 class QueryResponse(BaseModel):
     """Response from /query endpoint."""
+
     response_text: str
     prompt: str
 
 
 class VerifyTextRequest(BaseModel):
     """Request body for /verify-text endpoint — verify already-queried text."""
+
     prompt: str = Field(description="Original prompt (needed for tokenization context)")
     response_text: str = Field(description="LLM response text to verify")
     temperature: float = Field(default=1.0)
@@ -102,7 +106,7 @@ class VerifyTextRequest(BaseModel):
 
 
 class TokenResult(BaseModel):
-    gls_score: Optional[float] = None
+    gls_score: float | None = None
     logit_rank: int
     classification: str
     token_text: str = ""
@@ -154,6 +158,7 @@ FAUX_TEXT = (
     "and generating human-like text across many domains."
 )
 
+
 def _faux_response(
     text: str,
     *,
@@ -185,12 +190,14 @@ def _faux_response(
             gls = rng.uniform(-10.0, -5.0)
             rank = rng.randint(logit_rank_threshold + 1, 50)
             cls = "dangerous"
-        tokens.append(TokenResult(
-            gls_score=round(gls, 4),
-            logit_rank=rank,
-            classification=cls,
-            token_text=t_text,
-        ))
+        tokens.append(
+            TokenResult(
+                gls_score=round(gls, 4),
+                logit_rank=rank,
+                classification=cls,
+                token_text=t_text,
+            )
+        )
 
     total = len(tokens)
     num_safe = sum(1 for t in tokens if t.classification == "safe")
@@ -218,6 +225,7 @@ def _faux_response(
 # --- Helpers (real mode only) ---
 
 if not FAUX_MODE:
+
     def _build_verify_response(
         ver_cfg: VerificationConfig,
         verification_results: list[dict],
@@ -251,12 +259,14 @@ if not FAUX_MODE:
                     classification["num_suspicious"] -= 1
                 elif classification["classifications"][i].value == "dangerous":
                     classification["num_dangerous"] -= 1
-            tokens.append(TokenResult(
-                gls_score=gls_val if math.isfinite(gls_val) else None,
-                logit_rank=int(result["logit_rank"]),
-                classification=cls,
-                token_text=token_text,
-            ))
+            tokens.append(
+                TokenResult(
+                    gls_score=gls_val if math.isfinite(gls_val) else None,
+                    logit_rank=int(result["logit_rank"]),
+                    classification=cls,
+                    token_text=token_text,
+                )
+            )
 
         total = len(tokens)
         num_safe = classification["num_safe"]
@@ -308,6 +318,7 @@ def _sse_event(data: dict, event: str | None = None) -> str:
 
 # --- Endpoints ---
 
+
 @app.get("/ui", response_class=HTMLResponse)
 def ui_page():
     return get_ui_html()
@@ -339,7 +350,9 @@ def verify(req: VerifyRequest):
             seed=overrides.get("seed", DEFAULT_SEED),
             n_prompts=req.n_prompts,
             gls_threshold=overrides.get("gls_threshold", DEFAULT_GLS_THRESHOLD),
-            logit_rank_threshold=overrides.get("logit_rank_threshold", DEFAULT_LOGIT_RANK_THRESHOLD),
+            logit_rank_threshold=overrides.get(
+                "logit_rank_threshold", DEFAULT_LOGIT_RANK_THRESHOLD
+            ),
         )
 
     if not torch.cuda.is_available():
@@ -368,13 +381,20 @@ def verify(req: VerifyRequest):
 
     prompts = load_prompts(gen_cfg)
     outputs = generate_with_vllm(gen_cfg, prompts)
-    verification_results = verify_outputs(ver_cfg, outputs, model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
+    verification_results = verify_outputs(
+        ver_cfg, outputs, model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER
+    )
 
     gen_token_ids = _collect_gen_token_ids(outputs)
 
     return _build_verify_response(
-        ver_cfg, verification_results, gen_token_ids, VERIFY_TOKENIZER,
-        model_name=gen_cfg.model_name, seed=gen_cfg.seed, n_prompts=req.n_prompts,
+        ver_cfg,
+        verification_results,
+        gen_token_ids,
+        VERIFY_TOKENIZER,
+        model_name=gen_cfg.model_name,
+        seed=gen_cfg.seed,
+        n_prompts=req.n_prompts,
     )
 
 
@@ -395,7 +415,9 @@ def verify_stream(req: VerifyRequest):
             seed=overrides.get("seed", DEFAULT_SEED),
             n_prompts=req.n_prompts,
             gls_threshold=overrides.get("gls_threshold", DEFAULT_GLS_THRESHOLD),
-            logit_rank_threshold=overrides.get("logit_rank_threshold", DEFAULT_LOGIT_RANK_THRESHOLD),
+            logit_rank_threshold=overrides.get(
+                "logit_rank_threshold", DEFAULT_LOGIT_RANK_THRESHOLD
+            ),
         )
         yield _sse_event({"stage": "done", "result": response.model_dump()})
 
@@ -406,52 +428,64 @@ def verify_stream(req: VerifyRequest):
         raise HTTPException(status_code=503, detail="CUDA not available")
 
     def generate():
-      try:
-        overrides = req.config or {}
+        try:
+            overrides = req.config or {}
 
-        gen_cfg = GenerationConfig(
-            model_name=overrides.get("model_name", DEFAULT_MODEL),
-            n_prompts=req.n_prompts,
-            max_tokens=req.max_tokens,
-            temperature=overrides.get("temperature", 1.0),
-            top_k=overrides.get("top_k", 50),
-            top_p=overrides.get("top_p", 0.95),
-            seed=overrides.get("seed", DEFAULT_SEED),
-            gpu_memory_utilization=overrides.get("gpu_memory_utilization", 0.7),
-        )
+            gen_cfg = GenerationConfig(
+                model_name=overrides.get("model_name", DEFAULT_MODEL),
+                n_prompts=req.n_prompts,
+                max_tokens=req.max_tokens,
+                temperature=overrides.get("temperature", 1.0),
+                top_k=overrides.get("top_k", 50),
+                top_p=overrides.get("top_p", 0.95),
+                seed=overrides.get("seed", DEFAULT_SEED),
+                gpu_memory_utilization=overrides.get("gpu_memory_utilization", 0.7),
+            )
 
-        ver_cfg = VerificationConfig(
-            model_name=gen_cfg.model_name,
-            temperature=gen_cfg.temperature,
-            top_k=gen_cfg.top_k,
-            top_p=gen_cfg.top_p,
-            seed=gen_cfg.seed,
-            gls_threshold=overrides.get("gls_threshold", DEFAULT_GLS_THRESHOLD),
-            logit_rank_threshold=overrides.get("logit_rank_threshold", DEFAULT_LOGIT_RANK_THRESHOLD),
-        )
+            ver_cfg = VerificationConfig(
+                model_name=gen_cfg.model_name,
+                temperature=gen_cfg.temperature,
+                top_k=gen_cfg.top_k,
+                top_p=gen_cfg.top_p,
+                seed=gen_cfg.seed,
+                gls_threshold=overrides.get("gls_threshold", DEFAULT_GLS_THRESHOLD),
+                logit_rank_threshold=overrides.get(
+                    "logit_rank_threshold", DEFAULT_LOGIT_RANK_THRESHOLD
+                ),
+            )
 
-        yield _sse_event({"stage": "generating", "detail": f"Generating with {gen_cfg.model_name}..."})
+            yield _sse_event(
+                {"stage": "generating", "detail": f"Generating with {gen_cfg.model_name}..."}
+            )
 
-        prompts = load_prompts(gen_cfg)
-        outputs = generate_with_vllm(gen_cfg, prompts)
+            prompts = load_prompts(gen_cfg)
+            outputs = generate_with_vllm(gen_cfg, prompts)
 
-        yield _sse_event({"stage": "loading_model", "detail": "Loading verification model..."})
-        yield _sse_event({"stage": "verifying", "detail": "Running verification..."})
+            yield _sse_event({"stage": "loading_model", "detail": "Loading verification model..."})
+            yield _sse_event({"stage": "verifying", "detail": "Running verification..."})
 
-        verification_results = verify_outputs(ver_cfg, outputs, model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
+            verification_results = verify_outputs(
+                ver_cfg, outputs, model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER
+            )
 
-        gen_token_ids = _collect_gen_token_ids(outputs)
+            gen_token_ids = _collect_gen_token_ids(outputs)
 
-        response = _build_verify_response(
-            ver_cfg, verification_results, gen_token_ids, VERIFY_TOKENIZER,
-            model_name=gen_cfg.model_name, seed=gen_cfg.seed, n_prompts=req.n_prompts,
-        )
+            response = _build_verify_response(
+                ver_cfg,
+                verification_results,
+                gen_token_ids,
+                VERIFY_TOKENIZER,
+                model_name=gen_cfg.model_name,
+                seed=gen_cfg.seed,
+                n_prompts=req.n_prompts,
+            )
 
-        yield _sse_event({"stage": "done", "result": response.model_dump()})
-      except Exception as e:
-        import traceback
-        traceback.print_exc()
-        yield _sse_event({"stage": "error", "detail": f"{type(e).__name__}: {e}"})
+            yield _sse_event({"stage": "done", "result": response.model_dump()})
+        except Exception as e:
+            import traceback
+
+            traceback.print_exc()
+            yield _sse_event({"stage": "error", "detail": f"{type(e).__name__}: {e}"})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -513,11 +547,18 @@ def verify_text(req: VerifyTextRequest):
         logit_rank_threshold=req.logit_rank_threshold,
     )
 
-    verification_results = verify_outputs(ver_cfg, [mock_output], model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
+    verification_results = verify_outputs(
+        ver_cfg, [mock_output], model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER
+    )
 
     return _build_verify_response(
-        ver_cfg, verification_results, response_token_ids, VERIFY_TOKENIZER,
-        model_name=DEFAULT_MODEL, seed=req.seed, n_prompts=1,
+        ver_cfg,
+        verification_results,
+        response_token_ids,
+        VERIFY_TOKENIZER,
+        model_name=DEFAULT_MODEL,
+        seed=req.seed,
+        n_prompts=1,
     )
 
 
@@ -542,45 +583,57 @@ def verify_text_stream(req: VerifyTextRequest):
         return StreamingResponse(generate_faux(), media_type="text/event-stream")
 
     def generate():
-      try:
-        yield _sse_event({"stage": "loading_model", "detail": "Loading verification model..."})
+        try:
+            yield _sse_event({"stage": "loading_model", "detail": "Loading verification model..."})
 
-        prompt_token_ids = VERIFY_TOKENIZER.encode(req.prompt, add_special_tokens=True)
-        response_token_ids = VERIFY_TOKENIZER.encode(req.response_text, add_special_tokens=False)
+            prompt_token_ids = VERIFY_TOKENIZER.encode(req.prompt, add_special_tokens=True)
+            response_token_ids = VERIFY_TOKENIZER.encode(
+                req.response_text, add_special_tokens=False
+            )
 
-        if not response_token_ids:
-            yield _sse_event({"stage": "error", "detail": "Response text tokenized to empty sequence"})
-            return
+            if not response_token_ids:
+                yield _sse_event(
+                    {"stage": "error", "detail": "Response text tokenized to empty sequence"}
+                )
+                return
 
-        mock_output = MockRequestOutput(
-            prompt_token_ids=prompt_token_ids,
-            outputs=[MockOutput(token_ids=response_token_ids)],
-        )
+            mock_output = MockRequestOutput(
+                prompt_token_ids=prompt_token_ids,
+                outputs=[MockOutput(token_ids=response_token_ids)],
+            )
 
-        ver_cfg = VerificationConfig(
-            model_name=DEFAULT_MODEL,
-            temperature=req.temperature,
-            top_k=req.top_k,
-            top_p=req.top_p,
-            seed=req.seed,
-            gls_threshold=req.gls_threshold,
-            logit_rank_threshold=req.logit_rank_threshold,
-        )
+            ver_cfg = VerificationConfig(
+                model_name=DEFAULT_MODEL,
+                temperature=req.temperature,
+                top_k=req.top_k,
+                top_p=req.top_p,
+                seed=req.seed,
+                gls_threshold=req.gls_threshold,
+                logit_rank_threshold=req.logit_rank_threshold,
+            )
 
-        yield _sse_event({"stage": "verifying", "detail": "Running verification..."})
+            yield _sse_event({"stage": "verifying", "detail": "Running verification..."})
 
-        verification_results = verify_outputs(ver_cfg, [mock_output], model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER)
+            verification_results = verify_outputs(
+                ver_cfg, [mock_output], model=VERIFY_MODEL, tokenizer=VERIFY_TOKENIZER
+            )
 
-        response = _build_verify_response(
-            ver_cfg, verification_results, response_token_ids, VERIFY_TOKENIZER,
-            model_name=DEFAULT_MODEL, seed=req.seed, n_prompts=1,
-        )
+            response = _build_verify_response(
+                ver_cfg,
+                verification_results,
+                response_token_ids,
+                VERIFY_TOKENIZER,
+                model_name=DEFAULT_MODEL,
+                seed=req.seed,
+                n_prompts=1,
+            )
 
-        yield _sse_event({"stage": "done", "result": response.model_dump()})
-      except Exception as e:
-        import traceback
-        traceback.print_exc()
-        yield _sse_event({"stage": "error", "detail": f"{type(e).__name__}: {e}"})
+            yield _sse_event({"stage": "done", "result": response.model_dump()})
+        except Exception as e:
+            import traceback
+
+            traceback.print_exc()
+            yield _sse_event({"stage": "error", "detail": f"{type(e).__name__}: {e}"})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

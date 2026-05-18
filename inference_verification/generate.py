@@ -14,18 +14,17 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import json
-import torch
-import vllm
-from vllm import LLM, SamplingParams, RequestOutput
-from transformers import AutoTokenizer
-from tqdm import tqdm
-from typing import Optional
-import pickle
-from dataclasses import dataclass, field
 import gc
+import json
+import pickle
+from dataclasses import dataclass
 from datetime import datetime
+
+import torch
 import yaml
+from tqdm import tqdm
+from transformers import AutoTokenizer
+from vllm import LLM, RequestOutput, SamplingParams
 
 
 @dataclass
@@ -39,7 +38,7 @@ class GenerationConfig:
     n_prompts: int = 100
     max_tokens: int = 100
     temperature: float = 1.0
-    top_k: Optional[int] = 50
+    top_k: int | None = 50
     top_p: float = 0.95
     seed: int = 42
 
@@ -56,7 +55,7 @@ class GenerationConfig:
     @classmethod
     def from_yaml(cls, yaml_path: str) -> "GenerationConfig":
         """Load configuration from YAML file."""
-        with open(yaml_path, 'r') as f:
+        with open(yaml_path) as f:
             config_dict = yaml.safe_load(f)
 
         # Extract model and generation_params sections
@@ -86,14 +85,20 @@ def load_prompts(cfg: GenerationConfig) -> list[list[int]]:
         if len(tokenized_prompts) >= cfg.n_prompts:
             break
         try:
-            rendered_prompt = tokenizer.apply_chat_template(raw_prompt, tokenize=False, add_generation_prompt=True)
-            tokenized_prompt = tokenizer.encode(rendered_prompt, add_special_tokens=False, return_tensors=None)
+            rendered_prompt = tokenizer.apply_chat_template(
+                raw_prompt, tokenize=False, add_generation_prompt=True
+            )
+            tokenized_prompt = tokenizer.encode(
+                rendered_prompt, add_special_tokens=False, return_tensors=None
+            )
 
-            if len(tokenized_prompt) <= cfg.max_ctx_len:
-                if tuple(tokenized_prompt) not in unique_prompts:
-                    unique_prompts.add(tuple(tokenized_prompt))
-                    tokenized_prompts.append(tokenized_prompt)
-                    pbar.update(1)
+            if (
+                len(tokenized_prompt) <= cfg.max_ctx_len
+                and tuple(tokenized_prompt) not in unique_prompts
+            ):
+                unique_prompts.add(tuple(tokenized_prompt))
+                tokenized_prompts.append(tokenized_prompt)
+                pbar.update(1)
         except Exception as e:
             print(f"Warning: Failed to process prompt: {e}")
 
@@ -102,7 +107,9 @@ def load_prompts(cfg: GenerationConfig) -> list[list[int]]:
     return tokenized_prompts
 
 
-def generate_with_vllm(cfg: GenerationConfig, prompts: list[list[int]], max_model_len: Optional[int] = None) -> list[RequestOutput]:
+def generate_with_vllm(
+    cfg: GenerationConfig, prompts: list[list[int]], max_model_len: int | None = None
+) -> list[RequestOutput]:
     """Generate sequences using vLLM with Gumbel-max sampling."""
     print(f"Loading vLLM model: {cfg.model_name}")
     llm_kwargs = {
@@ -142,7 +149,7 @@ def save_outputs(outputs: list[RequestOutput], save_dir: str) -> str:
     save_path.mkdir(parents=True, exist_ok=True)
 
     output_file = save_path / "generated_outputs.pkl"
-    with open(output_file, 'wb') as f:
+    with open(output_file, "wb") as f:
         pickle.dump(outputs, f)
 
     print(f"Saved {len(outputs)} generated outputs to {output_file}")
@@ -164,7 +171,9 @@ def main():
     parser.add_argument("--top-k", type=int, default=None, help="Top-k sampling")
     parser.add_argument("--top-p", type=float, default=None, help="Top-p (nucleus) sampling")
     parser.add_argument("--seed", type=int, default=None, help="Random seed")
-    parser.add_argument("--gpu-memory-utilization", type=float, default=None, help="GPU memory utilization")
+    parser.add_argument(
+        "--gpu-memory-utilization", type=float, default=None, help="GPU memory utilization"
+    )
     parser.add_argument("--max-model-len", type=int, default=None, help="Max model sequence length")
     parser.add_argument("--save-dir", type=str, default=None, help="Output directory")
     args = parser.parse_args()

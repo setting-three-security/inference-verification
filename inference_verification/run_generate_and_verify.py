@@ -15,29 +15,28 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 # Add parent directory to path to import inference_verification module
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import gc
+import pickle
+from dataclasses import dataclass, field
+from datetime import datetime
+
 import torch
-import vllm
-from vllm import LLM, SamplingParams, RequestOutput
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
 from tqdm import tqdm
-from typing import Optional
-import pickle
-from dataclasses import asdict, dataclass, field
-import gc
-import numpy as np
-from datetime import datetime
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from vllm import LLM, RequestOutput, SamplingParams
 
 # Import GLS and CGS scoring functions from inference_verification.scoring_functions module
 from inference_verification.scoring_functions import (
     compute_gumbel_likelihood_score,
     compute_gumbel_likelihood_score_batch,
-    compute_convolved_gaussian_score,
-    get_seed,
     draw_u,
+    get_seed,
 )
 
 EPSILON = 1e-12
+
+
 @dataclass
 class GumbelCGSAnalysisConfig:
     """Configuration for vocab-wide Gumbel and CGS analysis."""
@@ -49,7 +48,7 @@ class GumbelCGSAnalysisConfig:
     n_prompts: int = 100
     max_tokens: int = 100
     temperature: float = 1.0
-    top_k: Optional[int] = 50
+    top_k: int | None = 50
     top_p: float = 0.95
     seed: int = 42
 
@@ -114,8 +113,8 @@ def apply_top_k_only(
 
 def apply_top_k_top_p(
     logits: torch.Tensor,
-    k: Optional[torch.Tensor],
-    p: Optional[torch.Tensor],
+    k: torch.Tensor | None,
+    p: torch.Tensor | None,
 ) -> torch.Tensor:
     """Apply top-k and top-p masks to the logits.
 
@@ -191,7 +190,9 @@ def keep_one_token(scores: torch.Tensor, tok_idx: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def get_probs(logits: torch.Tensor, temperature: float, top_k: torch.Tensor, top_p: torch.Tensor) -> torch.Tensor:
+def get_probs(
+    logits: torch.Tensor, temperature: float, top_k: torch.Tensor, top_p: torch.Tensor
+) -> torch.Tensor:
     """
     logits: shape [..., V]
     returns: probabilities with same shape, normalized along the last dim
@@ -214,11 +215,15 @@ def get_probs(logits: torch.Tensor, temperature: float, top_k: torch.Tensor, top
 # compute_convolved_gaussian_score now imported from convolved_gaussian_score module
 
 
-def set_tokenizer_pad_token(tokenizer: AutoTokenizer, model: AutoModelForCausalLM, model_name: str) -> AutoTokenizer:
+def set_tokenizer_pad_token(
+    tokenizer: AutoTokenizer, model: AutoModelForCausalLM, model_name: str
+) -> AutoTokenizer:
     """Set pad token for tokenizer if not already set."""
     if not tokenizer.pad_token and "llama" in model_name.lower():
         tokenizer.pad_token_id = (
-            model.config.eos_token_id[0] if isinstance(model.config.eos_token_id, list) else model.config.eos_token_id
+            model.config.eos_token_id[0]
+            if isinstance(model.config.eos_token_id, list)
+            else model.config.eos_token_id
         )
     elif not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
@@ -248,14 +253,20 @@ def load_prompts(cfg: GumbelCGSAnalysisConfig) -> list[list[int]]:
     while len(tokenized_prompts) < cfg.n_prompts and count < len(ds):
         try:
             raw_prompt = ds[count]["conversation"]
-            rendered_prompt = tokenizer.apply_chat_template(raw_prompt, tokenize=False, add_generation_prompt=True)
-            tokenized_prompt = tokenizer.encode(rendered_prompt, add_special_tokens=False, return_tensors=None)
+            rendered_prompt = tokenizer.apply_chat_template(
+                raw_prompt, tokenize=False, add_generation_prompt=True
+            )
+            tokenized_prompt = tokenizer.encode(
+                rendered_prompt, add_special_tokens=False, return_tensors=None
+            )
 
-            if len(tokenized_prompt) <= cfg.max_ctx_len:
-                if tuple(tokenized_prompt) not in unique_prompts:
-                    unique_prompts.add(tuple(tokenized_prompt))
-                    tokenized_prompts.append(tokenized_prompt)
-                    pbar.update(1)
+            if (
+                len(tokenized_prompt) <= cfg.max_ctx_len
+                and tuple(tokenized_prompt) not in unique_prompts
+            ):
+                unique_prompts.add(tuple(tokenized_prompt))
+                tokenized_prompts.append(tokenized_prompt)
+                pbar.update(1)
         except Exception as e:
             print(f"Warning: Failed to process prompt {count}: {e}")
 
@@ -266,7 +277,9 @@ def load_prompts(cfg: GumbelCGSAnalysisConfig) -> list[list[int]]:
     return tokenized_prompts
 
 
-def generate_with_vllm(cfg: GumbelCGSAnalysisConfig, prompts: list[list[int]], max_model_len: Optional[int] = None) -> list[RequestOutput]:
+def generate_with_vllm(
+    cfg: GumbelCGSAnalysisConfig, prompts: list[list[int]], max_model_len: int | None = None
+) -> list[RequestOutput]:
     """Generate sequences using vLLM."""
     print(f"Loading vLLM model: {cfg.model_name}")
     llm_kwargs = {
@@ -328,7 +341,7 @@ def verify_and_save(cfg: GumbelCGSAnalysisConfig, outputs: list[RequestOutput]) 
     results = []
 
     print(f"Verifying and saving {len(outputs)} outputs...")
-    for prompt_idx, output in enumerate(tqdm(outputs, desc="Verifying")):
+    for _prompt_idx, output in enumerate(tqdm(outputs, desc="Verifying")):
         prompt_ids = _as_list(output.prompt_token_ids)
         gen_ids = _as_list(output.outputs[0].token_ids)
 
@@ -343,14 +356,18 @@ def verify_and_save(cfg: GumbelCGSAnalysisConfig, outputs: list[RequestOutput]) 
         logits_LV = logits_BLV.squeeze().float()  # [L, V]
         top_k_tensor = torch.tensor([cfg.top_k], device=logits_LV.device)
         top_p_tensor = torch.tensor([cfg.top_p], device=logits_LV.device)
-        probs_LV = get_probs(logits_LV, cfg.temperature, top_k_tensor, top_p_tensor)  # [L, V] - filtered probs
+        probs_LV = get_probs(
+            logits_LV, cfg.temperature, top_k_tensor, top_p_tensor
+        )  # [L, V] - filtered probs
 
         # Compute unfiltered probabilities (only temperature, no top-k/top-p) for support selection
         if cfg.temperature > 0.0:
             unfiltered_logits_LV = logits_LV / max(cfg.temperature, 1e-10)
         else:
             unfiltered_logits_LV = logits_LV
-        unfiltered_probs_LV = torch.nn.functional.softmax(unfiltered_logits_LV, dim=-1, dtype=torch.float32)  # [L, V]
+        unfiltered_probs_LV = torch.nn.functional.softmax(
+            unfiltered_logits_LV, dim=-1, dtype=torch.float32
+        )  # [L, V]
 
         # Initialize RNGs
         gumbel_gen = torch.Generator(device=device)
@@ -386,12 +403,16 @@ def verify_and_save(cfg: GumbelCGSAnalysisConfig, outputs: list[RequestOutput]) 
 
             # Select support tokens from UNFILTERED probabilities (before top-k/top-p)
             unfiltered_probs_V = unfiltered_probs_LV[pos]
-            support_indices = unfiltered_probs_V.topk(k=cfg.support_size).indices  # Top-k tokens by unfiltered prob
+            support_indices = unfiltered_probs_V.topk(
+                k=cfg.support_size
+            ).indices  # Top-k tokens by unfiltered prob
 
             matches = torch.where(support_indices == sampled_token)[0]
             sampled_support_idx = matches[0].item() if len(matches) > 0 else -1
 
-            top_k_tensor = torch.tensor([cfg.top_k], device=device) if cfg.top_k is not None else None
+            top_k_tensor = (
+                torch.tensor([cfg.top_k], device=device) if cfg.top_k is not None else None
+            )
             top_p_tensor = torch.tensor([cfg.top_p], device=device)
 
             pairwise_gumbel_scores = {}
@@ -428,7 +449,7 @@ def verify_and_save(cfg: GumbelCGSAnalysisConfig, outputs: list[RequestOutput]) 
             # === CGS SCORES ===
             # Deterministically draw u from seed + past tokens
             seed = get_seed(cfg.seed, past_tokens)
-            u = draw_u(seed, cgs_gen)
+            draw_u(seed, cgs_gen)
 
             # Compute CGS scores for ALL tokens in vocabulary
             # cgs_scores_V = compute_vocab_wide_cgs_scores(cdf_V, u, cfg.cgs_sigma)
@@ -436,10 +457,15 @@ def verify_and_save(cfg: GumbelCGSAnalysisConfig, outputs: list[RequestOutput]) 
             # cgs_score = cgs_scores_V[sampled_token].item()
 
             result_dict = {
-                "top_k_gumbel_scores": support_gumbel_scores,  # [support_size] - GLS scores for top tokens
-                "sampled_gumbel_scores": pairwise_gumbel_scores,  # scalar - GLS score for sampled token
-                "sampled_support_idx": sampled_support_idx,  # int - rank of sampled token (0-indexed)
-                "logit_rank": logit_rank,  # int - rank of sampled token in raw logits (0=highest, before temp/top-k/top-p)
+                # [support_size] - GLS scores for top tokens
+                "top_k_gumbel_scores": support_gumbel_scores,
+                # scalar - GLS score for sampled token
+                "sampled_gumbel_scores": pairwise_gumbel_scores,
+                # int - rank of sampled token (0-indexed)
+                "sampled_support_idx": sampled_support_idx,
+                # int - rank of sampled token in raw logits
+                # (0=highest, before temp/top-k/top-p)
+                "logit_rank": logit_rank,
             }
 
             results.append(result_dict)
@@ -447,7 +473,7 @@ def verify_and_save(cfg: GumbelCGSAnalysisConfig, outputs: list[RequestOutput]) 
             # Update past tokens for next iteration
             past_tokens.append(sampled_token)
 
-    save_path = save_dir / f"all_prompts.pkl"
+    save_path = save_dir / "all_prompts.pkl"
     with open(save_path, "wb") as f:
         pickle.dump(results, f)
 
@@ -463,15 +489,48 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Run Gumbel + CGS verification experiments")
-    parser.add_argument("--model", type=str, default=None, help="Model name (default: meta-llama/Llama-3.1-8B-Instruct)")
-    parser.add_argument("--gumbel-sigma", type=float, default=None, help="Gumbel noise scale (default: 0.02)")
-    parser.add_argument("--n-prompts", type=int, default=None, help="Number of prompts (default: 100)")
-    parser.add_argument("--max-tokens", type=int, default=None, help="Max tokens to generate (default: 100)")
-    parser.add_argument("--gpu-memory-utilization", type=float, default=None, help="GPU memory utilization (default: 0.7)")
-    parser.add_argument("--max-model-len", type=int, default=None, help="Max model sequence length for KV cache")
-    parser.add_argument("--gumbel-sigmas", type=str, default=None, help="Comma-separated list of sigma values (e.g., '0.01,0.05')")
-    parser.add_argument("--support-size", type=int, default=None, help="Number of top tokens to score (default: 500)")
-    parser.add_argument("--sweep-dir", type=str, default=None, help="Parent directory for sweep (all runs save here)")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Model name (default: meta-llama/Llama-3.1-8B-Instruct)",
+    )
+    parser.add_argument(
+        "--gumbel-sigma", type=float, default=None, help="Gumbel noise scale (default: 0.02)"
+    )
+    parser.add_argument(
+        "--n-prompts", type=int, default=None, help="Number of prompts (default: 100)"
+    )
+    parser.add_argument(
+        "--max-tokens", type=int, default=None, help="Max tokens to generate (default: 100)"
+    )
+    parser.add_argument(
+        "--gpu-memory-utilization",
+        type=float,
+        default=None,
+        help="GPU memory utilization (default: 0.7)",
+    )
+    parser.add_argument(
+        "--max-model-len", type=int, default=None, help="Max model sequence length for KV cache"
+    )
+    parser.add_argument(
+        "--gumbel-sigmas",
+        type=str,
+        default=None,
+        help="Comma-separated list of sigma values (e.g., '0.01,0.05')",
+    )
+    parser.add_argument(
+        "--support-size",
+        type=int,
+        default=None,
+        help="Number of top tokens to score (default: 500)",
+    )
+    parser.add_argument(
+        "--sweep-dir",
+        type=str,
+        default=None,
+        help="Parent directory for sweep (all runs save here)",
+    )
     args = parser.parse_args()
 
     cfg = GumbelCGSAnalysisConfig()
@@ -487,7 +546,7 @@ def main():
     if args.gpu_memory_utilization is not None:
         cfg.gpu_memory_utilization = args.gpu_memory_utilization
     if args.gumbel_sigmas is not None:
-        cfg.gumbel_sigmas = [float(s.strip()) for s in args.gumbel_sigmas.split(',')]
+        cfg.gumbel_sigmas = [float(s.strip()) for s in args.gumbel_sigmas.split(",")]
     if args.support_size is not None:
         cfg.support_size = args.support_size
 

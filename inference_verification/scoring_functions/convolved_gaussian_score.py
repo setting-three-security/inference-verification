@@ -41,10 +41,7 @@ def draw_u(seed: int, generator: torch.Generator) -> torch.Tensor:
 
 
 def compute_convolved_gaussian_score(
-    cdf_V: torch.Tensor,
-    u: torch.Tensor,
-    sigma: float,
-    epsilon: float = EPSILON
+    cdf_V: torch.Tensor, u: torch.Tensor, sigma: float, epsilon: float = EPSILON
 ) -> torch.Tensor:
     """
     Compute CGS (Convolved Gaussian Score) for every token in vocabulary.
@@ -69,8 +66,6 @@ def compute_convolved_gaussian_score(
     Returns:
         torch.Tensor [V]: Log-probabilities for each token
     """
-    V = cdf_V.shape[0]
-
     # Build left and right endpoints of CDF intervals for each token
     # Token i corresponds to interval [CDF[i-1], CDF[i])
     cdf_left_all = torch.zeros_like(cdf_V)

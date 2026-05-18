@@ -14,26 +14,21 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import torch
-from vllm import RequestOutput
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from tqdm import tqdm
-from typing import Optional
 import pickle
-from dataclasses import dataclass, field
-import gc
-import numpy as np
-from datetime import datetime
+from dataclasses import dataclass
 from enum import Enum
+
+import torch
 import yaml
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from vllm import RequestOutput
 
 # Import GLS and CGS scoring functions from scoring_functions module
 from inference_verification.scoring_functions import (
     compute_gumbel_likelihood_score,
-    compute_gumbel_likelihood_score_batch,
-    compute_convolved_gaussian_score,
-    get_seed,
     draw_u,
+    get_seed,
 )
 
 EPSILON = 1e-12
@@ -41,6 +36,7 @@ EPSILON = 1e-12
 
 class TokenClassification(Enum):
     """Token classification categories."""
+
     SAFE = "safe"
     SUSPICIOUS = "suspicious"
     DANGEROUS = "dangerous"
@@ -55,7 +51,7 @@ class VerificationConfig:
 
     # Sampling parameters (must match generation)
     temperature: float = 1.0
-    top_k: Optional[int] = 50
+    top_k: int | None = 50
     top_p: float = 0.95
     seed: int = 42
 
@@ -74,7 +70,7 @@ class VerificationConfig:
     @classmethod
     def from_yaml(cls, yaml_path: str) -> "VerificationConfig":
         """Load configuration from YAML file."""
-        with open(yaml_path, 'r') as f:
+        with open(yaml_path) as f:
             config_dict = yaml.safe_load(f)
 
         # Extract model and verification_params sections
@@ -105,8 +101,8 @@ def apply_top_k_only(logits: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
 
 def apply_top_k_top_p(
     logits: torch.Tensor,
-    k: Optional[torch.Tensor],
-    p: Optional[torch.Tensor],
+    k: torch.Tensor | None,
+    p: torch.Tensor | None,
 ) -> torch.Tensor:
     """Apply top-k and top-p masks to logits (from vLLM)."""
     if p is None:
@@ -149,7 +145,9 @@ def keep_one_token(scores: torch.Tensor, tok_idx: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def get_probs(logits: torch.Tensor, temperature: float, top_k: torch.Tensor, top_p: torch.Tensor) -> torch.Tensor:
+def get_probs(
+    logits: torch.Tensor, temperature: float, top_k: torch.Tensor, top_p: torch.Tensor
+) -> torch.Tensor:
     """Compute probabilities from logits with temperature and top-k/top-p."""
     assert len(logits.shape) == 2
 
@@ -168,7 +166,9 @@ def set_tokenizer_pad_token(tokenizer, model, model_name):
     """Set pad token if not already set."""
     if not tokenizer.pad_token and "llama" in model_name.lower():
         tokenizer.pad_token_id = (
-            model.config.eos_token_id[0] if isinstance(model.config.eos_token_id, list) else model.config.eos_token_id
+            model.config.eos_token_id[0]
+            if isinstance(model.config.eos_token_id, list)
+            else model.config.eos_token_id
         )
     elif not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
@@ -189,16 +189,22 @@ def load_verification_model(model_name: str):
     """Load model and tokenizer for verification. Call once at startup."""
     print(f"Loading verification model: {model_name}")
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.bfloat16,
-    ).to(device).eval()
+    model = (
+        AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.bfloat16,
+        )
+        .to(device)
+        .eval()
+    )
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer = set_tokenizer_pad_token(tokenizer, model, model_name)
     return model, tokenizer
 
 
-def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput], model=None, tokenizer=None) -> list[dict]:
+def verify_outputs(
+    cfg: VerificationConfig, outputs: list[RequestOutput], model=None, tokenizer=None
+) -> list[dict]:
     """
     Verify generated outputs and compute GLS scores.
 
@@ -213,7 +219,7 @@ def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput], model=
     results = []
 
     print(f"Verifying {len(outputs)} outputs...")
-    for prompt_idx, output in enumerate(tqdm(outputs, desc="Verifying")):
+    for _prompt_idx, output in enumerate(tqdm(outputs, desc="Verifying")):
         prompt_ids = _as_list(output.prompt_token_ids)
         gen_ids = _as_list(output.outputs[0].token_ids)
 
@@ -228,13 +234,6 @@ def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput], model=
         top_k_tensor = torch.tensor([cfg.top_k], device=device)
         top_p_tensor = torch.tensor([cfg.top_p], device=device)
         probs_LV = get_probs(logits_LV, cfg.temperature, top_k_tensor, top_p_tensor)
-
-        # Unfiltered probabilities for support selection
-        if cfg.temperature > 0.0:
-            unfiltered_logits_LV = logits_LV / max(cfg.temperature, 1e-10)
-        else:
-            unfiltered_logits_LV = logits_LV
-        unfiltered_probs_LV = torch.nn.functional.softmax(unfiltered_logits_LV, dim=-1, dtype=torch.float32)
 
         # Initialize RNGs
         gumbel_gen = torch.Generator(device=device)
@@ -260,7 +259,9 @@ def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput], model=
             cdf_V = probs_V.cumsum(dim=-1)
             cdf_V[-1] = 1.0
 
-            top_k_tensor = torch.tensor([cfg.top_k], device=device) if cfg.top_k is not None else None
+            top_k_tensor = (
+                torch.tensor([cfg.top_k], device=device) if cfg.top_k is not None else None
+            )
             top_p_tensor = torch.tensor([cfg.top_p], device=device)
 
             # Compute GLS score for sampled token
@@ -278,7 +279,7 @@ def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput], model=
 
             # CGS (deterministic from seed + past tokens)
             seed = get_seed(cfg.seed, past_tokens)
-            u = draw_u(seed, cgs_gen)
+            draw_u(seed, cgs_gen)
 
             result_dict = {
                 "sampled_gumbel_scores": max(claimed_token_score, -25.0),
@@ -287,7 +288,6 @@ def verify_outputs(cfg: VerificationConfig, outputs: list[RequestOutput], model=
 
             results.append(result_dict)
             past_tokens.append(sampled_token)
-
 
     return results
 
@@ -298,7 +298,7 @@ def save_verification_results(results: list[dict], save_dir: str) -> str:
     save_path.mkdir(parents=True, exist_ok=True)
 
     output_file = save_path / "all_prompts.pkl"
-    with open(output_file, 'wb') as f:
+    with open(output_file, "wb") as f:
         pickle.dump(results, f)
 
     print(f"Saved verification results to {output_file}")
@@ -371,18 +371,33 @@ def main():
     parser.add_argument("--config", type=str, default=None, help="Path to YAML config file")
 
     # Optional overrides (only used if --config is not provided)
-    parser.add_argument("--model", type=str, default=None, help="Model name (must match generation)")
-    parser.add_argument("--temperature", type=float, default=None, help="Temperature (must match generation)")
+    parser.add_argument(
+        "--model", type=str, default=None, help="Model name (must match generation)"
+    )
+    parser.add_argument(
+        "--temperature", type=float, default=None, help="Temperature (must match generation)"
+    )
     parser.add_argument("--top-k", type=int, default=None, help="Top-k (must match generation)")
     parser.add_argument("--top-p", type=float, default=None, help="Top-p (must match generation)")
     parser.add_argument("--seed", type=int, default=None, help="Seed (must match generation)")
-    parser.add_argument("--gumbel-sigma", type=float, default=None, help="Gaussian noise scale for GLS")
+    parser.add_argument(
+        "--gumbel-sigma", type=float, default=None, help="Gaussian noise scale for GLS"
+    )
     parser.add_argument("--save-dir", type=str, default=None, help="Output directory")
 
     # Classification arguments
-    parser.add_argument("--classify", action="store_true", help="Run classification after verification")
-    parser.add_argument("--gls-threshold", type=float, default=None, help="GLS threshold for classification")
-    parser.add_argument("--logit-rank-threshold", type=int, default=None, help="Logit rank threshold for classification")
+    parser.add_argument(
+        "--classify", action="store_true", help="Run classification after verification"
+    )
+    parser.add_argument(
+        "--gls-threshold", type=float, default=None, help="GLS threshold for classification"
+    )
+    parser.add_argument(
+        "--logit-rank-threshold",
+        type=int,
+        default=None,
+        help="Logit rank threshold for classification",
+    )
 
     args = parser.parse_args()
 
@@ -435,7 +450,7 @@ def main():
 
     # Load generated outputs
     print(f"\nLoading generated outputs from {args.input}...")
-    with open(args.input, 'rb') as f:
+    with open(args.input, "rb") as f:
         outputs = pickle.load(f)
     print(f"Loaded {len(outputs)} generated outputs")
 
@@ -467,7 +482,7 @@ def main():
         num_suspicious = classification_results["num_suspicious"]
         num_dangerous = classification_results["num_dangerous"]
 
-        print(f"\nResults:")
+        print("\nResults:")
         print(f"  Total tokens: {total_tokens}")
         print(f"  Safe tokens: {num_safe} ({num_safe / total_tokens * 100:.2f}%)")
         print(f"  Suspicious tokens: {num_suspicious} ({num_suspicious / total_tokens * 100:.2f}%)")

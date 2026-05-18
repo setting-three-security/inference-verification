@@ -3,16 +3,16 @@
 import os
 import time
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-import json
-from .api_cost_tracker import log_api_spending
+
 import anthropic
 
-openai_models = [
-    "gpt-5-2025-08-07"
-    "gpt-5-mini-2025-08-07", "gpt-5-nano-2025-08-07", "gpt-4.1-2025-04-14",
-    "o4-mini-2025-04-16"
+from .api_cost_tracker import log_api_spending
 
+openai_models = [
+    "gpt-5-2025-08-07gpt-5-mini-2025-08-07",
+    "gpt-5-nano-2025-08-07",
+    "gpt-4.1-2025-04-14",
+    "o4-mini-2025-04-16",
     ###
     #    "gpt-4o",
     #    "gpt-4o-mini"
@@ -29,13 +29,14 @@ anthropic_models = [
     "claude-sonnet-4-20250514",
     "claude-3-7-sonnet-20250219",
     "claude-3-5-haiku-20241022",
-    "claude-3-haiku-20240307"
+    "claude-3-haiku-20240307",
 ]
 
 
 def _get_secrets_dir() -> Path:
     """Get the SECRETS directory path."""
     from . import SECRETS_DIR
+
     return SECRETS_DIR
 
 
@@ -48,14 +49,14 @@ def _load_api_key(filename: str) -> str:
         raise FileNotFoundError(
             f"API key not found at {key_path}. "
             f"Please create {filename} in the SECRETS/ directory "
-            f"with your API key.")
+            f"with your API key."
+        )
 
-    with open(key_path, 'r') as f:
+    with open(key_path) as f:
         key = f.read().strip()
 
     if not key:
-        raise ValueError(f"API key file {filename} is empty. "
-                         f"Please add your API key to the file.")
+        raise ValueError(f"API key file {filename} is empty. Please add your API key to the file.")
 
     return key
 
@@ -81,18 +82,20 @@ def get_openrouter_key() -> str:
     return _load_api_key("openrouter__mats.key")
 
 
-def check_api_keys() -> Dict[str, bool]:
+def check_api_keys() -> dict[str, bool]:
     """Check if API keys are available and valid."""
     secrets_dir = _get_secrets_dir()
     results = {}
 
-    for provider, filename in [("anthropic", "anthropic.key"),
-                               ("openai", "openai.key"),
-                               ("openrouter", "openrouter__mats.key")]:
+    for provider, filename in [
+        ("anthropic", "anthropic.key"),
+        ("openai", "openai.key"),
+        ("openrouter", "openrouter__mats.key"),
+    ]:
         key_path = secrets_dir / filename
         if key_path.exists():
             try:
-                with open(key_path, 'r') as f:
+                with open(key_path) as f:
                     key = f.read().strip()
                 results[provider] = bool(key)
             except Exception:
@@ -104,16 +107,17 @@ def check_api_keys() -> Dict[str, bool]:
 
 
 def anthropic_completion(
-        prompt: str,
-        model: str = "claude-3-5-sonnet-20241022",
-        max_tokens: int = 1024,
-        temperature: float = 1.0,
-        seed: Optional[int] = None,  # Kept for compatibility but ignored
-        system: Optional[str] = None,
-        prefill: Optional[str] = None,
-        **kwargs) -> str:
+    prompt: str,
+    model: str = "claude-3-5-sonnet-20241022",
+    max_tokens: int = 1024,
+    temperature: float = 1.0,
+    seed: int | None = None,  # Kept for compatibility but ignored
+    system: str | None = None,
+    prefill: str | None = None,
+    **kwargs,
+) -> str:
     """Call Anthropic API for text completion.
-    
+
     Args:
         prompt: The user prompt
         model: Model to use
@@ -123,7 +127,7 @@ def anthropic_completion(
         system: System prompt
         prefill: Optional assistant message prefill to guide response format
         **kwargs: Additional parameters
-    
+
     Returns:
         The model's response text (including prefill if provided)
     """
@@ -142,7 +146,7 @@ def anthropic_completion(
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
-        **kwargs
+        **kwargs,
     }
 
     if system is not None:
@@ -159,24 +163,29 @@ def anthropic_completion(
             break
         except Exception as e:
             error_msg = str(e).lower()
-            is_rate_limit = ("rate" in error_msg and "limit" in error_msg) or \
-                            "429" in error_msg or "too many requests" in error_msg or \
-                            "overloaded" in error_msg
+            is_rate_limit = (
+                ("rate" in error_msg and "limit" in error_msg)
+                or "429" in error_msg
+                or "too many requests" in error_msg
+                or "overloaded" in error_msg
+            )
             if is_rate_limit and attempt < max_retries:
-                delay = base_delay * (2 ** attempt)  # 30, 60, 120, 240, ...
-                print(f"  Rate limited, waiting {delay}s (attempt {attempt+1}/{max_retries})...")
+                delay = base_delay * (2**attempt)  # 30, 60, 120, 240, ...
+                print(f"  Rate limited, waiting {delay}s (attempt {attempt + 1}/{max_retries})...")
                 time.sleep(delay)
                 continue
             raise
 
     # Track spending
-    if hasattr(response, 'usage'):
-        log_api_spending(provider='anthropic',
-                         model=model,
-                         input_tokens=response.usage.input_tokens,
-                         output_tokens=response.usage.output_tokens,
-                         prompt=prompt,
-                         response=response.content[0].text)
+    if hasattr(response, "usage"):
+        log_api_spending(
+            provider="anthropic",
+            model=model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            prompt=prompt,
+            response=response.content[0].text,
+        )
 
     # If prefill was used, prepend it to the response
     if prefill is not None:
@@ -190,18 +199,19 @@ def anthropic_continue(
     model: str,
     max_tokens: int = 128,
     temperature: float = 0.7,
-    seed: Optional[int] = None,
-    stop_sequences: Optional[List[str]] = None,
-    prefill_assistant: Optional[str] = None,
-    system: Optional[str] = None,
-    api_key: Optional[str] = None,
+    seed: int | None = None,
+    stop_sequences: list[str] | None = None,
+    prefill_assistant: str | None = None,
+    system: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """
     Continue text for up to `max_tokens` using Anthropic Messages API.
 
     Two modes:
       - Plain continuation:   anthropic_continue_text("...your text...")
-      - Prefill continuation: anthropic_continue_text("USER TEXT", prefill_assistant="ASSISTANT: partial...")
+      - Prefill continuation:
+            anthropic_continue_text("USER TEXT", prefill_assistant="ASSISTANT: partial...")
 
     Returns the concatenated text blocks from Claude's reply.
     """
@@ -233,30 +243,30 @@ def anthropic_continue(
         error_msg = str(e).lower()
         # Check for rate limit errors
         if "rate" in error_msg and "limit" in error_msg:
-            raise Exception(
-                f"RATE_LIMIT_ERROR: Anthropic API rate limit hit. Error: {e}")
+            raise Exception(f"RATE_LIMIT_ERROR: Anthropic API rate limit hit. Error: {e}") from e
         elif "429" in error_msg or "too many requests" in error_msg:
             raise Exception(
                 f"RATE_LIMIT_ERROR: Anthropic API rate limit hit (429). Error: {e}"
-            )
+            ) from e
         else:
             raise  # Re-raise the original exception if not rate limit
 
     # Join all text blocks from the response
-    return "".join(block.text for block in resp.content
-                   if block.type == "text").strip()
+    return "".join(block.text for block in resp.content if block.type == "text").strip()
 
 
-def openai_completion(prompt: str,
-                      model: str = "gpt-4o-mini",
-                      max_tokens: int = 1024,
-                      temperature: float = 1.0,
-                      seed: Optional[int] = None,
-                      system: Optional[str] = None,
-                      **kwargs) -> str:
+def openai_completion(
+    prompt: str,
+    model: str = "gpt-4o-mini",
+    max_tokens: int = 1024,
+    temperature: float = 1.0,
+    seed: int | None = None,
+    system: str | None = None,
+    **kwargs,
+) -> str:
     """Call OpenAI API for text completion."""
+
     from openai import OpenAI
-    import time
 
     api_key = get_openai_key()
     client = OpenAI(api_key=api_key)
@@ -288,27 +298,30 @@ def openai_completion(prompt: str,
         raise
 
     # Track spending
-    if hasattr(response, 'usage'):
-        log_api_spending(provider='openai',
-                         model=model,
-                         input_tokens=response.usage.prompt_tokens,
-                         output_tokens=response.usage.completion_tokens,
-                         prompt=prompt,
-                         response=response.choices[0].message.content)
+    if hasattr(response, "usage"):
+        log_api_spending(
+            provider="openai",
+            model=model,
+            input_tokens=response.usage.prompt_tokens,
+            output_tokens=response.usage.completion_tokens,
+            prompt=prompt,
+            response=response.choices[0].message.content,
+        )
 
     return response.choices[0].message.content
 
 
 def openrouter_completion(
-        prompt: str,
-        model: str = "openai/gpt-oss-120b",
-        max_tokens: int = 1024,
-        temperature: float = 1.0,
-        seed: Optional[int] = None,
-        system: Optional[str] = None,
-        site_url: Optional[str] = None,
-        site_name: Optional[str] = None,
-        **kwargs) -> str:
+    prompt: str,
+    model: str = "openai/gpt-oss-120b",
+    max_tokens: int = 1024,
+    temperature: float = 1.0,
+    seed: int | None = None,
+    system: str | None = None,
+    site_url: str | None = None,
+    site_name: str | None = None,
+    **kwargs,
+) -> str:
     """Call OpenRouter API for text completion.
 
     Args:
@@ -352,7 +365,7 @@ def openrouter_completion(
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
-        **kwargs
+        **kwargs,
     }
 
     if seed is not None:
@@ -363,38 +376,39 @@ def openrouter_completion(
     except Exception as e:
         error_msg = str(e).lower()
         if "rate" in error_msg and "limit" in error_msg:
-            raise Exception(
-                f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit. Error: {e}")
+            raise Exception(f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit. Error: {e}") from e
         elif "429" in error_msg or "too many requests" in error_msg:
             raise Exception(
                 f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit (429). Error: {e}"
-            )
+            ) from e
         else:
             print(f"[OpenRouter API] Error with model {model}: {e}")
             raise
 
     # Track spending
-    if hasattr(response, 'usage') and response.usage:
+    if hasattr(response, "usage") and response.usage:
         log_api_spending(
-            provider='openrouter',
+            provider="openrouter",
             model=model,
             input_tokens=response.usage.prompt_tokens,
             output_tokens=response.usage.completion_tokens,
             prompt=prompt,
-            response=response.choices[0].message.content or "")
+            response=response.choices[0].message.content or "",
+        )
 
     return response.choices[0].message.content or ""
 
 
 def openrouter_messages(
-        messages: List[Dict[str, str]],
-        model: str = "openai/gpt-oss-120b",
-        max_tokens: int = 1024,
-        temperature: float = 1.0,
-        seed: Optional[int] = None,
-        site_url: Optional[str] = None,
-        site_name: Optional[str] = None,
-        **kwargs) -> str:
+    messages: list[dict[str, str]],
+    model: str = "openai/gpt-oss-120b",
+    max_tokens: int = 1024,
+    temperature: float = 1.0,
+    seed: int | None = None,
+    site_url: str | None = None,
+    site_name: str | None = None,
+    **kwargs,
+) -> str:
     """Call OpenRouter API with message format.
 
     Args:
@@ -431,7 +445,7 @@ def openrouter_messages(
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
-        **kwargs
+        **kwargs,
     }
 
     if seed is not None:
@@ -442,40 +456,41 @@ def openrouter_messages(
     except Exception as e:
         error_msg = str(e).lower()
         if "rate" in error_msg and "limit" in error_msg:
-            raise Exception(
-                f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit. Error: {e}")
+            raise Exception(f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit. Error: {e}") from e
         elif "429" in error_msg or "too many requests" in error_msg:
             raise Exception(
                 f"RATE_LIMIT_ERROR: OpenRouter API rate limit hit (429). Error: {e}"
-            )
+            ) from e
         else:
             raise
 
     # Track spending
-    if hasattr(response, 'usage') and response.usage:
-        prompt_text = ' '.join([m.get('content', '') for m in messages])
+    if hasattr(response, "usage") and response.usage:
+        prompt_text = " ".join([m.get("content", "") for m in messages])
         log_api_spending(
-            provider='openrouter',
+            provider="openrouter",
             model=model,
             input_tokens=response.usage.prompt_tokens,
             output_tokens=response.usage.completion_tokens,
             prompt=prompt_text[:1000],
-            response=response.choices[0].message.content or "")
+            response=response.choices[0].message.content or "",
+        )
 
     return response.choices[0].message.content or ""
 
 
 def anthropic_messages(
-        messages: List[Dict[str, str]],
-        model: str = "claude-3-5-sonnet-20241022",
-        max_tokens: int = 1024,
-        temperature: float = 1.0,
-        seed: Optional[int] = None,  # Kept for compatibility but ignored
-        system: Optional[str] = None,
-        prefill: Optional[str] = None,
-        **kwargs) -> str:
+    messages: list[dict[str, str]],
+    model: str = "claude-3-5-sonnet-20241022",
+    max_tokens: int = 1024,
+    temperature: float = 1.0,
+    seed: int | None = None,  # Kept for compatibility but ignored
+    system: str | None = None,
+    prefill: str | None = None,
+    **kwargs,
+) -> str:
     """Call Anthropic API with message format.
-    
+
     Args:
         messages: List of message dictionaries with 'role' and 'content'
         model: Model to use
@@ -485,7 +500,7 @@ def anthropic_messages(
         system: System prompt
         prefill: Optional assistant message prefill to guide response format
         **kwargs: Additional parameters
-        
+
     Returns:
         The model's response text (including prefill if provided)
     """
@@ -504,7 +519,7 @@ def anthropic_messages(
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
-        **kwargs
+        **kwargs,
     }
 
     if system is not None:
@@ -515,15 +530,16 @@ def anthropic_messages(
     response = client.messages.create(**create_params)
 
     # Track spending
-    if hasattr(response, 'usage'):
-        prompt_text = ' '.join([m.get('content', '') for m in messages])
+    if hasattr(response, "usage"):
+        prompt_text = " ".join([m.get("content", "") for m in messages])
         log_api_spending(
-            provider='anthropic',
+            provider="anthropic",
             model=model,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             prompt=prompt_text[:1000],  # Truncate for logging
-            response=response.content[0].text)
+            response=response.content[0].text,
+        )
 
     # If prefill was used, prepend it to the response
     if prefill is not None:
@@ -532,12 +548,14 @@ def anthropic_messages(
         return response.content[0].text
 
 
-def openai_messages(messages: List[Dict[str, str]],
-                    model: str = "gpt-4o-mini",
-                    max_tokens: int = 1024,
-                    temperature: float = 1.0,
-                    seed: Optional[int] = None,
-                    **kwargs) -> str:
+def openai_messages(
+    messages: list[dict[str, str]],
+    model: str = "gpt-4o-mini",
+    max_tokens: int = 1024,
+    temperature: float = 1.0,
+    seed: int | None = None,
+    **kwargs,
+) -> str:
     """Call OpenAI API with message format."""
     from openai import OpenAI
 
@@ -565,33 +583,35 @@ def openai_messages(messages: List[Dict[str, str]],
         error_msg = str(e).lower()
         # Check for rate limit errors
         if "rate" in error_msg and "limit" in error_msg:
-            raise Exception(
-                f"RATE_LIMIT_ERROR: OpenAI API rate limit hit. Error: {e}")
+            raise Exception(f"RATE_LIMIT_ERROR: OpenAI API rate limit hit. Error: {e}") from e
         elif "429" in error_msg or "too many requests" in error_msg:
-            raise Exception(
-                f"RATE_LIMIT_ERROR: OpenAI API rate limit hit (429). Error: {e}"
-            )
+            raise Exception(f"RATE_LIMIT_ERROR: OpenAI API rate limit hit (429). Error: {e}") from e
         else:
             raise  # Re-raise the original exception if not rate limit
 
     # Track spending
-    if hasattr(response, 'usage'):
-        log_api_spending(provider='openai',
-                         model=model,
-                         input_tokens=response.usage.prompt_tokens,
-                         output_tokens=response.usage.completion_tokens,
-                         prompt=prompt,
-                         response=response.choices[0].message.content)
+    if hasattr(response, "usage"):
+        prompt_text = " ".join([m.get("content", "") for m in messages])
+        log_api_spending(
+            provider="openai",
+            model=model,
+            input_tokens=response.usage.prompt_tokens,
+            output_tokens=response.usage.completion_tokens,
+            prompt=prompt_text[:1000],
+            response=response.choices[0].message.content,
+        )
 
     return response.choices[0].message.content
 
 
-def anthropic_stream(prompt: str,
-                     model: str = "claude-3-5-sonnet-20241022",
-                     max_tokens: int = 1024,
-                     temperature: float = 1.0,
-                     system: Optional[str] = None,
-                     **kwargs):
+def anthropic_stream(
+    prompt: str,
+    model: str = "claude-3-5-sonnet-20241022",
+    max_tokens: int = 1024,
+    temperature: float = 1.0,
+    system: str | None = None,
+    **kwargs,
+):
     """Stream responses from Anthropic API."""
     import anthropic
 
@@ -605,24 +625,25 @@ def anthropic_stream(prompt: str,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
-        **kwargs
+        **kwargs,
     }
 
     if system is not None:
         stream_params["system"] = system
 
     with client.messages.stream(**stream_params) as stream:
-        for text in stream.text_stream:
-            yield text
+        yield from stream.text_stream
 
 
-def openai_stream(prompt: str,
-                  model: str = "gpt-4o-mini",
-                  max_tokens: int = 1024,
-                  temperature: float = 1.0,
-                  seed: Optional[int] = None,
-                  system: Optional[str] = None,
-                  **kwargs):
+def openai_stream(
+    prompt: str,
+    model: str = "gpt-4o-mini",
+    max_tokens: int = 1024,
+    temperature: float = 1.0,
+    seed: int | None = None,
+    system: str | None = None,
+    **kwargs,
+):
     """Stream responses from OpenAI API."""
     from openai import OpenAI
 
@@ -640,7 +661,7 @@ def openai_stream(prompt: str,
         "messages": messages,
         "seed": seed,
         "stream": True,
-        **kwargs
+        **kwargs,
     }
 
     # GPT-5 doesn't support temperature parameter
@@ -661,10 +682,10 @@ def openai_stream(prompt: str,
 
 def anthropic_batch_submit_and_wait(
     client: anthropic.Anthropic,
-    requests: List[Dict],
+    requests: list[dict],
     description: str = "batch",
     poll_interval: int = 5,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Submit batch requests and wait for completion with spend tracking.
 
     Args:
@@ -677,6 +698,7 @@ def anthropic_batch_submit_and_wait(
         Dict mapping custom_id -> response text
     """
     import time
+
     from .api_cost_tracker import log_batch_spending
 
     if not requests:
@@ -687,13 +709,13 @@ def anthropic_batch_submit_and_wait(
     batch_id = batch.id
 
     # Get model from first request for logging
-    model = requests[0]['params'].get('model', 'unknown')
+    model = requests[0]["params"].get("model", "unknown")
 
     # Poll for completion
     while True:
         status = client.messages.batches.retrieve(batch_id)
 
-        if status.processing_status == 'ended':
+        if status.processing_status == "ended":
             break
 
         time.sleep(poll_interval)
@@ -703,7 +725,7 @@ def anthropic_batch_submit_and_wait(
     all_results = list(client.messages.batches.results(batch_id))
 
     for result in all_results:
-        if result.result.type == 'succeeded':
+        if result.result.type == "succeeded":
             content = result.result.message.content[0].text
             results[result.custom_id] = content
 
@@ -713,7 +735,7 @@ def anthropic_batch_submit_and_wait(
     return results
 
 
-def get_available_models(provider: str = "all") -> Dict[str, List[str]]:
+def get_available_models(provider: str = "all") -> dict[str, list[str]]:
     """Return available models for each provider."""
     models = {
         "anthropic": [
@@ -731,7 +753,7 @@ def get_available_models(provider: str = "all") -> Dict[str, List[str]]:
             "gpt-3.5-turbo",
             "o1-preview",
             "o1-mini",
-        ]
+        ],
     }
 
     if provider == "all":
@@ -739,5 +761,4 @@ def get_available_models(provider: str = "all") -> Dict[str, List[str]]:
     elif provider in models:
         return {provider: models[provider]}
     else:
-        raise ValueError(f"Unknown provider: {provider}. "
-                         f"Use 'anthropic', 'openai', or 'all'.")
+        raise ValueError(f"Unknown provider: {provider}. Use 'anthropic', 'openai', or 'all'.")

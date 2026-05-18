@@ -14,8 +14,8 @@ import random
 from pathlib import Path
 
 from datasets import load_dataset
-from transformers import AutoTokenizer
 from tqdm import tqdm
+from transformers import AutoTokenizer
 
 MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
 MAX_CTX_LEN = 512
@@ -39,7 +39,9 @@ def main():
     for row in tqdm(ds, desc="Scanning"):
         try:
             raw_prompt = row["conversation"]
-            rendered = tokenizer.apply_chat_template(raw_prompt, tokenize=False, add_generation_prompt=True)
+            rendered = tokenizer.apply_chat_template(
+                raw_prompt, tokenize=False, add_generation_prompt=True
+            )
             tokens = tokenizer.encode(rendered, add_special_tokens=False, return_tensors=None)
 
             if len(tokens) <= MAX_CTX_LEN:
