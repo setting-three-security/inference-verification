@@ -260,11 +260,13 @@ def load_prompts(cfg: GumbelCGSAnalysisConfig) -> list[list[int]]:
                 rendered_prompt, add_special_tokens=False, return_tensors=None
             )
 
-            if len(tokenized_prompt) <= cfg.max_ctx_len:
-                if tuple(tokenized_prompt) not in unique_prompts:
-                    unique_prompts.add(tuple(tokenized_prompt))
-                    tokenized_prompts.append(tokenized_prompt)
-                    pbar.update(1)
+            if (
+                len(tokenized_prompt) <= cfg.max_ctx_len
+                and tuple(tokenized_prompt) not in unique_prompts
+            ):
+                unique_prompts.add(tuple(tokenized_prompt))
+                tokenized_prompts.append(tokenized_prompt)
+                pbar.update(1)
         except Exception as e:
             print(f"Warning: Failed to process prompt {count}: {e}")
 
@@ -339,7 +341,7 @@ def verify_and_save(cfg: GumbelCGSAnalysisConfig, outputs: list[RequestOutput]) 
     results = []
 
     print(f"Verifying and saving {len(outputs)} outputs...")
-    for prompt_idx, output in enumerate(tqdm(outputs, desc="Verifying")):
+    for _prompt_idx, output in enumerate(tqdm(outputs, desc="Verifying")):
         prompt_ids = _as_list(output.prompt_token_ids)
         gen_ids = _as_list(output.outputs[0].token_ids)
 
@@ -447,7 +449,7 @@ def verify_and_save(cfg: GumbelCGSAnalysisConfig, outputs: list[RequestOutput]) 
             # === CGS SCORES ===
             # Deterministically draw u from seed + past tokens
             seed = get_seed(cfg.seed, past_tokens)
-            u = draw_u(seed, cgs_gen)
+            draw_u(seed, cgs_gen)
 
             # Compute CGS scores for ALL tokens in vocabulary
             # cgs_scores_V = compute_vocab_wide_cgs_scores(cdf_V, u, cfg.cgs_sigma)
@@ -455,10 +457,15 @@ def verify_and_save(cfg: GumbelCGSAnalysisConfig, outputs: list[RequestOutput]) 
             # cgs_score = cgs_scores_V[sampled_token].item()
 
             result_dict = {
-                "top_k_gumbel_scores": support_gumbel_scores,  # [support_size] - GLS scores for top tokens
-                "sampled_gumbel_scores": pairwise_gumbel_scores,  # scalar - GLS score for sampled token
-                "sampled_support_idx": sampled_support_idx,  # int - rank of sampled token (0-indexed)
-                "logit_rank": logit_rank,  # int - rank of sampled token in raw logits (0=highest, before temp/top-k/top-p)
+                # [support_size] - GLS scores for top tokens
+                "top_k_gumbel_scores": support_gumbel_scores,
+                # scalar - GLS score for sampled token
+                "sampled_gumbel_scores": pairwise_gumbel_scores,
+                # int - rank of sampled token (0-indexed)
+                "sampled_support_idx": sampled_support_idx,
+                # int - rank of sampled token in raw logits
+                # (0=highest, before temp/top-k/top-p)
+                "logit_rank": logit_rank,
             }
 
             results.append(result_dict)

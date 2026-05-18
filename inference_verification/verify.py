@@ -219,7 +219,7 @@ def verify_outputs(
     results = []
 
     print(f"Verifying {len(outputs)} outputs...")
-    for prompt_idx, output in enumerate(tqdm(outputs, desc="Verifying")):
+    for _prompt_idx, output in enumerate(tqdm(outputs, desc="Verifying")):
         prompt_ids = _as_list(output.prompt_token_ids)
         gen_ids = _as_list(output.outputs[0].token_ids)
 
@@ -234,15 +234,6 @@ def verify_outputs(
         top_k_tensor = torch.tensor([cfg.top_k], device=device)
         top_p_tensor = torch.tensor([cfg.top_p], device=device)
         probs_LV = get_probs(logits_LV, cfg.temperature, top_k_tensor, top_p_tensor)
-
-        # Unfiltered probabilities for support selection
-        if cfg.temperature > 0.0:
-            unfiltered_logits_LV = logits_LV / max(cfg.temperature, 1e-10)
-        else:
-            unfiltered_logits_LV = logits_LV
-        unfiltered_probs_LV = torch.nn.functional.softmax(
-            unfiltered_logits_LV, dim=-1, dtype=torch.float32
-        )
 
         # Initialize RNGs
         gumbel_gen = torch.Generator(device=device)
@@ -288,7 +279,7 @@ def verify_outputs(
 
             # CGS (deterministic from seed + past tokens)
             seed = get_seed(cfg.seed, past_tokens)
-            u = draw_u(seed, cgs_gen)
+            draw_u(seed, cgs_gen)
 
             result_dict = {
                 "sampled_gumbel_scores": max(claimed_token_score, -25.0),

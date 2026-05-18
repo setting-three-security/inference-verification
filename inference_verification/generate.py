@@ -92,11 +92,13 @@ def load_prompts(cfg: GenerationConfig) -> list[list[int]]:
                 rendered_prompt, add_special_tokens=False, return_tensors=None
             )
 
-            if len(tokenized_prompt) <= cfg.max_ctx_len:
-                if tuple(tokenized_prompt) not in unique_prompts:
-                    unique_prompts.add(tuple(tokenized_prompt))
-                    tokenized_prompts.append(tokenized_prompt)
-                    pbar.update(1)
+            if (
+                len(tokenized_prompt) <= cfg.max_ctx_len
+                and tuple(tokenized_prompt) not in unique_prompts
+            ):
+                unique_prompts.add(tuple(tokenized_prompt))
+                tokenized_prompts.append(tokenized_prompt)
+                pbar.update(1)
         except Exception as e:
             print(f"Warning: Failed to process prompt: {e}")
 

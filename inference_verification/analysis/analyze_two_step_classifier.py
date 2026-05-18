@@ -134,7 +134,8 @@ def save_plot(filepath_without_ext, dpi=150, bbox_inches="tight"):
 
 # Load data
 print("Loading data...")
-data = pickle.load(open(filename, "rb"))
+with open(filename, "rb") as f:
+    data = pickle.load(f)
 print(f"Loaded {len(data)} prompts")
 
 # Extract scores and ranks
@@ -274,7 +275,8 @@ for rank_threshold in rank_thresholds:
 
     print(f"  ✓ Completed rank_threshold={rank_threshold}")
     print(
-        f"     Kept {len(fpr_values)} thresholds, skipped {num_skipped} (>{max_suspicious_pct}% suspicious)"
+        f"     Kept {len(fpr_values)} thresholds, skipped {num_skipped} "
+        f"(>{max_suspicious_pct}% suspicious)"
     )
 
 # ============================================================================
