@@ -1,0 +1,19 @@
+# Slim dependency set for the CPU-only CI import-smoke job
+# (.github/workflows/imports.yml + scripts/import_smoke.py).
+#
+# Intentionally excludes torch / transformers / vllm / xformers /
+# bitsandbytes so the CI install stays small.
+#
+# Versions deliberately unpinned: this is a smoke test, not a
+# reproducibility surface. If a future minor release of any of
+# these breaks an import, that's exactly what the smoke is here
+# to catch.
+
+fastapi
+uvicorn
+pydantic
+openai
+matplotlib
+numpy
+scikit-learn
+tqdm
