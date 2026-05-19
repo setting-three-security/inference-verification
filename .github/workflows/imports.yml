@@ -1,0 +1,39 @@
+name: Imports
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: imports-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  import-smoke:
+    name: import smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+
+      # Slim install: requirements-ci.txt only
+      - name: Install slim CI deps
+        run: uv pip install --system -r requirements-ci.txt
+
+      - name: Run import smoke
+        run: python scripts/import_smoke.py
