@@ -5,13 +5,9 @@ import math
 import pytest
 import requests
 
-pytestmark = pytest.mark.slow
-
 
 class TestHealth:
     """Tests that don't require GPU / slow verification."""
-
-    pytestmark = []  # override module-level slow marker
 
     def test_health(self, base_url):
         resp = requests.get(f"{base_url}/health", timeout=10)
@@ -31,6 +27,7 @@ class TestHealth:
         assert "gpu_available" in data
 
 
+@pytest.mark.slow
 class TestVerifyResponse:
     """Tests that use the cached /verify response."""
 
