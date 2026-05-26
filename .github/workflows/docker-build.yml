@@ -54,6 +54,19 @@ jobs:
       - name: Smoke (FAUX_MODE)
         run: |
           set -euo pipefail
+
+          # On any non-zero exit (health-poll timeout, pytest failure, etc.),
+          # dump container logs to help diagnose. Always remove the container.
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "--- docker logs ivt-smoke ---"
+              docker logs ivt-smoke || true
+            fi
+            docker rm -f ivt-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
           docker run -d --name ivt-smoke -e FAUX_MODE=1 -p 8000:8080 \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.version }}
 
@@ -65,8 +78,6 @@ jobs:
             fi
             if [ "$i" -eq 30 ]; then
               echo "smoke failed: /health never responded" >&2
-              docker logs ivt-smoke || true
-              docker rm -f ivt-smoke || true
               exit 1
             fi
             sleep 1
@@ -76,8 +87,6 @@ jobs:
           # subset (TestHealth) hits /health and /config — exactly what we want for
           # a FAUX_MODE smoke. No new contract code needed.
           pytest tests/test_tee_external.py -m "not slow" --url http://localhost:8000
-
-          docker rm -f ivt-smoke
 
       # Push the exact image bytes that just passed the smoke. The image is
       # already in the local Docker daemon from `load: true` above. Using
