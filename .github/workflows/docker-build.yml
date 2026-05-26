@@ -43,6 +43,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Capture the image config sha256 of what we're about to smoke, so we can
+      # verify after push that BuildKit's second pass produced the same bytes.
+      - name: Capture smoked image ID
+        id: smoked
+        run: |
+          set -euo pipefail
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.version }}"
+          SMOKED_ID=$(docker inspect --format='{{.Id}}' "$IMAGE")
+          echo "id=$SMOKED_ID" >> "$GITHUB_OUTPUT"
+          echo "smoked image id: $SMOKED_ID"
+
       - name: Set up Python (for pytest smoke)
         uses: actions/setup-python@v5
         with:
@@ -88,20 +99,37 @@ jobs:
           # a FAUX_MODE smoke. No new contract code needed.
           pytest tests/test_tee_external.py -m "not slow" --url http://localhost:8000
 
-      # Push the exact image bytes that just passed the smoke. The image is
-      # already in the local Docker daemon from `load: true` above. Using
-      # `docker push` (rather than a second docker/build-push-action call)
-      # guarantees the pushed image is bit-for-bit identical to the smoked one
-      # — eliminating a class of race where cache eviction or base-image drift
-      # between two BuildKit invocations could produce divergent layers.
       - name: Push to GHCR
         id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.version }}
+          cache-from: type=gha
+
+      # Gate: BuildKit's cache-aware push is ~4x faster than `docker push`, but
+      # only because it doesn't materialize the image locally first. If layer
+      # cache eviction or base-image drift caused the second build to produce
+      # different bytes, the pushed image would diverge from the smoked one
+      # silently. This step fails the workflow if that happens, restoring the
+      # smoke gate's bit-for-bit guarantee without giving up BuildKit's speed.
+      - name: Verify pushed image matches smoked image
         run: |
           set -euo pipefail
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.version }}"
-          docker push "$IMAGE"
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE" | cut -d@ -f2)
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          SMOKED_ID="${{ steps.smoked.outputs.id }}"
+          PUSHED_ID="${{ steps.push.outputs.imageid }}"
+          if [ -z "$PUSHED_ID" ]; then
+            echo "ERROR: docker/build-push-action did not expose imageid" >&2
+            exit 1
+          fi
+          if [ "$PUSHED_ID" != "$SMOKED_ID" ]; then
+            echo "ERROR: pushed image differs from smoked image" >&2
+            echo "  smoked: $SMOKED_ID" >&2
+            echo "  pushed: $PUSHED_ID" >&2
+            exit 1
+          fi
+          echo "OK: smoked == pushed ($SMOKED_ID)"
 
       - name: Output digest
         run: echo "Pushed ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.version }}@${{ steps.push.outputs.digest }}"
