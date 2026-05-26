@@ -54,6 +54,19 @@ jobs:
       - name: Smoke (FAUX_MODE)
         run: |
           set -euo pipefail
+
+          # On any non-zero exit (health-poll timeout, pytest failure, etc.),
+          # dump container logs to help diagnose. Always remove the container.
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "--- docker logs ivt-smoke ---"
+              docker logs ivt-smoke || true
+            fi
+            docker rm -f ivt-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
           docker run -d --name ivt-smoke -e FAUX_MODE=1 -p 8000:8080 \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.version }}
 
@@ -65,8 +78,6 @@ jobs:
             fi
             if [ "$i" -eq 30 ]; then
               echo "smoke failed: /health never responded" >&2
-              docker logs ivt-smoke || true
-              docker rm -f ivt-smoke || true
               exit 1
             fi
             sleep 1
@@ -77,16 +88,20 @@ jobs:
           # a FAUX_MODE smoke. No new contract code needed.
           pytest tests/test_tee_external.py -m "not slow" --url http://localhost:8000
 
-          docker rm -f ivt-smoke
-
+      # Push the exact image bytes that just passed the smoke. The image is
+      # already in the local Docker daemon from `load: true` above. Using
+      # `docker push` (rather than a second docker/build-push-action call)
+      # guarantees the pushed image is bit-for-bit identical to the smoked one
+      # — eliminating a class of race where cache eviction or base-image drift
+      # between two BuildKit invocations could produce divergent layers.
       - name: Push to GHCR
         id: push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.version }}
-          cache-from: type=gha
+        run: |
+          set -euo pipefail
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.version }}"
+          docker push "$IMAGE"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE" | cut -d@ -f2)
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Output digest
         run: echo "Pushed ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.version }}@${{ steps.push.outputs.digest }}"
