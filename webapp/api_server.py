@@ -15,8 +15,6 @@ from pathlib import Path
 
 FAUX_MODE = os.environ.get("FAUX_MODE", "").lower() in ("1", "true", "yes")
 
-raise RuntimeError("smoke-test sad path")  # will be reverted
-
 if not FAUX_MODE:
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
